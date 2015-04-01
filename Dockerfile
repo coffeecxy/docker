@@ -91,14 +91,15 @@ ENV GOPATH /go:/go/src/github.com/docker/docker/vendor
 RUN cd /usr/local/go/src && ./make.bash --no-clean 2>&1
 
 # Compile Go for cross compilation
-ENV DOCKER_CROSSPLATFORMS \
-	linux/386 linux/arm \
-	darwin/amd64 darwin/386 \
-	freebsd/amd64 freebsd/386 freebsd/arm \
-	windows/amd64 windows/386
+#ENV DOCKER_CROSSPLATFORMS \
+#	linux/386 linux/arm \
+#	darwin/amd64 darwin/386 \
+#	freebsd/amd64 freebsd/386 freebsd/arm \
+#	windows/amd64 windows/386
 
 # (set an explicit GOARM of 5 for maximum compatibility)
 #ENV GOARM 5
+
 #RUN cd /usr/local/go/src \
 #	&& set -x \
 #	&& for platform in $DOCKER_CROSSPLATFORMS; do \
@@ -163,12 +164,14 @@ RUN ln -sv $PWD/contrib/completion/bash/docker /etc/bash_completion.d/docker
 # see also "hack/make/.ensure-frozen-images" (which needs to be updated any time this list is)
 
 # Install man page generator
+#这个相当重要,因为vendor中包含从code.google.com中的代码,这些代码还下载不了
 COPY vendor /go/src/github.com/docker/docker/vendor
+
 # (copy vendor/ because go-md2man needs golang.org/x/net)
-RUN set -x \
-	&& git clone -b v1.0.1 https://github.com/cpuguy83/go-md2man.git /go/src/github.com/cpuguy83/go-md2man \
-	&& git clone -b v1.2 https://github.com/russross/blackfriday.git /go/src/github.com/russross/blackfriday \
-	&& go install -v github.com/cpuguy83/go-md2man
+#RUN set -x \
+#	&& git clone -b v1.0.1 https://github.com/cpuguy83/go-md2man.git /go/src/github.com/cpuguy83/go-md2man \
+#	&& git clone -b v1.2 https://github.com/russross/blackfriday.git /go/src/github.com/russross/blackfriday \
+#	&& go install -v github.com/cpuguy83/go-md2man
 
 # install toml validator
 ENV TOMLV_COMMIT 9baf8a8a9f2ed20a8e54160840c492f937eeaf9a
