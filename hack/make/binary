@@ -1,18 +1,21 @@
 #!/bin/bash
 set -e
 
+# 这个文件中的脚本是用来生成binary的
+
 DEST=$1
 BINARY_NAME="docker-$VERSION"
-BINARY_EXTENSION="$(binary_extension)"
-BINARY_FULLNAME="$BINARY_NAME$BINARY_EXTENSION"
+BINARY_EXTENSION="$(binary_extension)" #再linux下面,会发现不需要.exe子类的扩展名
+BINARY_FULLNAME="$BINARY_NAME$BINARY_EXTENSION" #docker-1.5.0-dev
 
 # Cygdrive paths don't play well with go build -o.
 if [[ "$(uname -s)" == CYGWIN* ]]; then
 	DEST=$(cygpath -mw $DEST)
 fi
 
-source "$(dirname "$BASH_SOURCE")/.go-autogen"
+source "$(dirname "$BASH_SOURCE")/.go-autogen" #/go/src/github.com/docker/docker/hack/make/.go-autogen
 
+# 生成我们需要的binary文件
 go build \
 	-o "$DEST/$BINARY_FULLNAME" \
 	"${BUILDFLAGS[@]}" \

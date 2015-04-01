@@ -40,9 +40,11 @@ default: binary
 
 all: build
 	$(DOCKER_RUN_DOCKER) hack/make.sh
+	
 
 binary: build
 	$(DOCKER_RUN_DOCKER) hack/make.sh binary
+	# 这一步出了问题,从gocode下载代码的时候被墙了
 
 cross: build
 	$(DOCKER_RUN_DOCKER) hack/make.sh binary cross
@@ -84,6 +86,8 @@ shell: build
 
 build: bundles
 	docker build -t "$(DOCKER_IMAGE)" .
+	#docker build -t "docker:master" .
+	#这一步是可以通过的,会生成一个叫做docker:master的镜像文件
 
 docs-build:
 	cp ./VERSION docs/VERSION

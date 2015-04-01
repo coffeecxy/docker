@@ -247,6 +247,7 @@ bundle() {
 }
 
 main() {
+	set -x
 	# We want this to fail if the bundles already exist and cannot be removed.
 	# This is to avoid mixing bundles from different versions of the code.
 	mkdir -p bundles
@@ -265,6 +266,7 @@ main() {
 		bundle $SCRIPTDIR/make/$bundle
 		echo
 	done
+	set +x
 }
 
 main "$@"

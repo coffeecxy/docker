@@ -23,9 +23,21 @@
 # the case. Therefore, you don't have to disable it anymore.
 #
 
+
 FROM ubuntu:14.04
 MAINTAINER Tianon Gravi <admwiggin@gmail.com> (@tianon)
 
+# 2-6
+# CHANGE: 在国内需要使用另外一个源,ubuntu官方源太慢了
+RUN echo "deb http://mirrors.aliyun.com/ubuntu/ trusty main restricted universe multiverse" >/etc/apt/sources.list
+RUN echo "deb http://mirrors.aliyun.com/ubuntu/ trusty-security main restricted universe multiverse" >>/etc/apt/sources.list
+RUN echo "deb http://mirrors.aliyun.com/ubuntu/ trusty-updates main restricted universe multiverse" >>/etc/apt/sources.list
+RUN echo "deb http://mirrors.aliyun.com/ubuntu/ trusty-proposed main restricted universe multiverse" >>/etc/apt/sources.list
+RUN echo "deb http://mirrors.aliyun.com/ubuntu/ trusty-backports main restricted universe multiverse" >>/etc/apt/sources.list
+
+
+
+# 安装需要的package
 # Packaged dependencies
 RUN apt-get update && apt-get install -y \
 	apparmor \
@@ -41,7 +53,7 @@ RUN apt-get update && apt-get install -y \
 	libapparmor-dev \
 	libcap-dev \
 	libsqlite3-dev \
-	mercurial \
+	mercurial \ 
 	parallel \
 	python-mock \
 	python-pip \
@@ -51,11 +63,13 @@ RUN apt-get update && apt-get install -y \
 	ruby1.9.1-dev \
 	s3cmd=1.1.0* \
 	--no-install-recommends
+	
+#这个mercurial就是hg命令所在的包,从code.google.com下载代码的时候需要的
 
+#下载lvm2的代码,然后安装lvm2
 # Get lvm2 source for compiling statically
 RUN git clone -b v2_02_103 https://git.fedorahosted.org/git/lvm2.git /usr/local/lvm2
 # see https://git.fedorahosted.org/cgit/lvm2.git/refs/tags for release tags
-
 # Compile and install lvm2
 RUN cd /usr/local/lvm2 \
 	&& ./configure --enable-static_link \
@@ -63,6 +77,7 @@ RUN cd /usr/local/lvm2 \
 	&& make install_device-mapper
 # see https://git.fedorahosted.org/cgit/lvm2.git/tree/INSTALL
 
+#下载lxc的代码,然后安装lvm2
 # Install lxc
 ENV LXC_VERSION 1.0.7
 RUN mkdir -p /usr/src/lxc \
@@ -73,40 +88,44 @@ RUN cd /usr/src/lxc \
 	&& make install \
 	&& ldconfig
 
+# 安装goling 1.4.2
 # Install Go
 ENV GO_VERSION 1.4.2
-RUN curl -sSL https://golang.org/dl/go${GO_VERSION}.src.tar.gz | tar -v -C /usr/local -xz \
+# CHANGE: golang.org不能访问到,这儿使用了国内的一个下载golang的源代码的网址
+# RUN curl -sSL https://golang.org/dl/go${GO_VERSION}.src.tar.gz | tar -v -C /usr/local -xz \
+RUN curl -sSL http://golangtc.com/static/go/go${GO_VERSION}.src.tar.gz | tar -v -C /usr/local -xz \
 	&& mkdir -p /go/bin
 ENV PATH /go/bin:/usr/local/go/bin:$PATH
 ENV GOPATH /go:/go/src/github.com/docker/docker/vendor
 RUN cd /usr/local/go/src && ./make.bash --no-clean 2>&1
 
+# 安装交叉编译器,但是我没有使用
 # Compile Go for cross compilation
-ENV DOCKER_CROSSPLATFORMS \
-	linux/386 linux/arm \
-	darwin/amd64 darwin/386 \
-	freebsd/amd64 freebsd/386 freebsd/arm \
-	windows/amd64 windows/386
+#ENV DOCKER_CROSSPLATFORMS \
+#	linux/386 linux/arm \
+#	darwin/amd64 darwin/386 \
+#	freebsd/amd64 freebsd/386 freebsd/arm \
+#	windows/amd64 windows/386
 
 # (set an explicit GOARM of 5 for maximum compatibility)
-ENV GOARM 5
-RUN cd /usr/local/go/src \
-	&& set -x \
-	&& for platform in $DOCKER_CROSSPLATFORMS; do \
-		GOOS=${platform%/*} \
-		GOARCH=${platform##*/} \
-			./make.bash --no-clean 2>&1; \
-	done
+#ENV GOARM 5
+#RUN cd /usr/local/go/src \
+#	&& set -x \
+#	&& for platform in $DOCKER_CROSSPLATFORMS; do \
+#		GOOS=${platform%/*} \
+#		GOARCH=${platform##*/} \
+#			./make.bash --no-clean 2>&1; \
+#	done
 
 # We still support compiling with older Go, so need to grab older "gofmt"
-ENV GOFMT_VERSION 1.3.3
-RUN curl -sSL https://storage.googleapis.com/golang/go${GOFMT_VERSION}.$(go env GOOS)-$(go env GOARCH).tar.gz | tar -C /go/bin -xz --strip-components=2 go/bin/gofmt
+#ENV GOFMT_VERSION 1.3.3
+#RUN curl -sSL https://storage.googleapis.com/golang/go${GOFMT_VERSION}.$(go env GOOS)-$(go env GOARCH).tar.gz | tar -C /go/bin -xz --#strip-components=2 go/bin/gofmt
 
 # Grab Go's cover tool for dead-simple code coverage testing
-RUN go get golang.org/x/tools/cmd/cover
+#RUN go get golang.org/x/tools/cmd/cover
 
 # TODO replace FPM with some very minimal debhelper stuff
-RUN gem install --no-rdoc --no-ri fpm --version 1.3.2
+#RUN gem install --no-rdoc --no-ri fpm --version 1.3.2
 
 # Install registry
 ENV REGISTRY_COMMIT d957768537c5af40e4f4cd96871f7b2bde9e2923
@@ -130,7 +149,7 @@ RUN { \
 	} > ~/.s3cfg
 
 # Set user.email so crosbymichael's in-container merge commits go smoothly
-RUN git config --global user.email 'docker-dummy@example.com'
+RUN git config --global user.email 'loricxy@qq.com'
 
 # Add an unprivileged user to be used for tests which need it
 RUN groupadd -r docker
@@ -147,18 +166,20 @@ RUN ln -sfv $PWD/.bashrc ~/.bashrc
 RUN ln -sv $PWD/contrib/completion/bash/docker /etc/bash_completion.d/docker
 
 # Get useful and necessary Hub images so we can "docker load" locally instead of pulling
-COPY contrib/download-frozen-image.sh /go/src/github.com/docker/docker/contrib/
-RUN ./contrib/download-frozen-image.sh /docker-frozen-images \
-	busybox:latest@4986bf8c15363d1c5d15512d5266f8777bfba4974ac56e3270e7760f6f0a8125 \
-	hello-world:frozen@e45a5af57b00862e5ef5782a9925979a02ba2b12dff832fd0991335f4a11e5c5
+#COPY contrib/download-frozen-image.sh /go/src/github.com/docker/docker/contrib/
+#RUN ./contrib/download-frozen-image.sh /docker-frozen-images \
+#	busybox:latest@4986bf8c15363d1c5d15512d5266f8777bfba4974ac56e3270e7760f6f0a8125 \
+#	hello-world:frozen@e45a5af57b00862e5ef5782a9925979a02ba2b12dff832fd0991335f4a11e5c5
 # see also "hack/make/.ensure-frozen-images" (which needs to be updated any time this list is)
+
+RUN echo "173.194.38.197    code.google.com" >>/etc/hosts
 
 # Install man page generator
 COPY vendor /go/src/github.com/docker/docker/vendor
 # (copy vendor/ because go-md2man needs golang.org/x/net)
 RUN set -x \
-	&& git clone -b v1.0.1 https://github.com/cpuguy83/go-md2man.git /go/src/github.com/cpuguy83/go-md2man \
-	&& git clone -b v1.2 https://github.com/russross/blackfriday.git /go/src/github.com/russross/blackfriday \
+	&& git clone -b v1.0.1 git://github.com/cpuguy83/go-md2man.git /go/src/github.com/cpuguy83/go-md2man \
+	&& git clone -b v1.2 git://github.com/russross/blackfriday.git /go/src/github.com/russross/blackfriday \
 	&& go install -v github.com/cpuguy83/go-md2man
 
 # install toml validator
@@ -168,8 +189,12 @@ RUN set -x \
 	&& (cd /go/src/github.com/BurntSushi/toml && git checkout -q $TOMLV_COMMIT) \
 	&& go install -v github.com/BurntSushi/toml/cmd/tomlv
 
+#指定进入这image的container之后,需要运行这个函数
 # Wrap all commands in the "docker-in-docker" script to allow nested containers
 ENTRYPOINT ["hack/dind"]
 
+# 将docker当前目录下面的所有文件都复制到镜像中对应的地方去
 # Upload docker source
 COPY . /go/src/github.com/docker/docker
+
+
