@@ -59,6 +59,7 @@ RUN apt-get update && apt-get install -y \
 	s3cmd=1.1.0* \
 	--no-install-recommends
 
+# 安装lvm2文件系统
 # Get lvm2 source for compiling statically
 RUN git clone -b v2_02_103 https://git.fedorahosted.org/git/lvm2.git /usr/local/lvm2
 # see https://git.fedorahosted.org/cgit/lvm2.git/refs/tags for release tags
@@ -70,6 +71,7 @@ RUN cd /usr/local/lvm2 \
 	&& make install_device-mapper
 # see https://git.fedorahosted.org/cgit/lvm2.git/tree/INSTALL
 
+# 安装LXC
 # Install lxc
 ENV LXC_VERSION 1.0.7
 RUN mkdir -p /usr/src/lxc \
@@ -87,9 +89,11 @@ ENV GO_VERSION 1.4.2
 RUN curl -sSL http://golangtc.com/static/go/go${GO_VERSION}.src.tar.gz | tar -v -C /usr/local -xz \
 	&& mkdir -p /go/bin
 ENV PATH /go/bin:/usr/local/go/bin:$PATH
-ENV GOPATH /go:/go/src/github.com/docker/docker/vendor
+#注意GOPATH中有两个部分,第二部分的大部分都是从googlecode上面拉下来的代码
+ENV GOPATH /go:/go/src/github.com/docker/docker/vendor 
 RUN cd /usr/local/go/src && ./make.bash --no-clean 2>&1
 
+#CHANGE: 交叉编译环境,这儿不使用
 # Compile Go for cross compilation
 #ENV DOCKER_CROSSPLATFORMS \
 #	linux/386 linux/arm \

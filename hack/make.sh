@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 只要又错误,那么马上退出执行
 set -e
 
 # This script builds various binary artifacts from a checkout of the docker
@@ -21,12 +22,16 @@ set -e
 #   "docker run hack/make.sh" in the resulting image.
 #
 
+# 对于管道命令,返回最后失败的那个命令的返回值
 set -o pipefail
 
 export DOCKER_PKG='github.com/docker/docker'
 
+set -x
+
 # We're a nice, sexy, little shell script, and people might try to run us;
 # but really, they shouldn't. We want to be in a container!
+# 保证这个脚本运行在一个容器中,并且在指定的工作目录下
 if [ "$(pwd)" != "/go/src/$DOCKER_PKG" ] || [ -z "$DOCKER_CROSSPLATFORMS" ]; then
 	{
 		echo "# WARNING! I don't seem to be running in the Docker container."
@@ -61,9 +66,13 @@ DEFAULT_BUNDLES=(
 	ubuntu
 )
 
+#当前目录下的VERSION文件存储了当前在开发的docker的版本
 VERSION=$(cat ./VERSION)
+# command -v可以知道git命令是不是存在
 if command -v git &> /dev/null && git rev-parse &> /dev/null; then
+	#得到当前的HEAD的SHA1值,就是7位的数字
 	GITCOMMIT=$(git rev-parse --short HEAD)
+	#当前目录下面是不是有没有被git加入的改变的东西
 	if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
 		GITCOMMIT="$GITCOMMIT-dirty"
 	fi
@@ -84,12 +93,14 @@ if [ "$AUTO_GOPATH" ]; then
 	export GOPATH="$(pwd)/.gopath:$(pwd)/vendor"
 fi
 
+# 如果没有定义GOPATH,那么提示错误
 if [ ! "$GOPATH" ]; then
 	echo >&2 'error: missing GOPATH; please see http://golang.org/doc/code.html#GOPATH'
 	echo >&2 '  alternatively, set AUTO_GOPATH=1'
 	exit 1
 fi
 
+#如果没有定义$DOCKER_CLIENTONLY,那么会在生成的docker中包含client部分和daemon部分
 if [ -z "$DOCKER_CLIENTONLY" ]; then
 	DOCKER_BUILDTAGS+=" daemon"
 fi
@@ -101,6 +112,7 @@ fi
 # Use these flags when compiling the tests and final binary
 
 IAMSTATIC='true'
+# BASH_SOURCE没有定义,是shell自定义的变量名,表示当前.sh文件的文件名
 source "$(dirname "$BASH_SOURCE")/make/.go-autogen"
 LDFLAGS='-w'
 
@@ -116,6 +128,7 @@ ORIG_BUILDFLAGS=( -a -tags "netgo static_build $DOCKER_BUILDTAGS" -installsuffix
 # see https://github.com/golang/go/issues/9369#issuecomment-69864440 for why -installsuffix is necessary here
 BUILDFLAGS=( $BUILDFLAGS "${ORIG_BUILDFLAGS[@]}" )
 # Test timeout.
+# 前面加一个:是什么意思?
 : ${TIMEOUT:=30m}
 TESTFLAGS+=" -test.timeout=${TIMEOUT}"
 
@@ -127,6 +140,7 @@ LDFLAGS_STATIC_DOCKER="
 	-extldflags \"$EXTLDFLAGS_STATIC_DOCKER\"
 "
 
+# freeBSD中其他的选项
 if [ "$(uname -s)" = 'FreeBSD' ]; then
 	# Tell cgo the compiler is Clang, not GCC
 	# https://code.google.com/p/go/source/browse/src/cmd/cgo/gcc.go?spec=svne77e74371f2340ee08622ce602e9f7b15f29d8d3&r=e6794866ebeba2bf8818b9261b54e2eef1c9e588#752
@@ -217,12 +231,15 @@ find_dirs() {
 	\) -name "$1" -print0 | xargs -0n1 dirname | sort -u
 }
 
+# 为一个文件生成其hash值
 hash_files() {
+	#取出每一个文件
 	while [ $# -gt 0 ]; do
 		f="$1"
 		shift
 		dir="$(dirname "$f")"
 		base="$(basename "$f")"
+		# 使用md5算法和sha256算法来分别计算其hash值.
 		for hashAlgo in md5 sha256; do
 			if command -v "${hashAlgo}sum" &> /dev/null; then
 				(
@@ -243,7 +260,7 @@ bundle() {
 	bundle=$(basename $bundlescript)
 	echo "---> Making bundle: $bundle (in bundles/$VERSION/$bundle)"
 	mkdir -p bundles/$VERSION/$bundle
-	source "$bundlescript" "$(pwd)/bundles/$VERSION/$bundle"
+	source "$bundlescript" "$(pwd)/bundles/$VERSION/$bundle" #调用的script,参数为生成的target的目录
 }
 
 main() {
@@ -255,16 +272,21 @@ main() {
 		rm -fr bundles/$VERSION && mkdir bundles/$VERSION || exit 1
 		echo
 	fi
+	#得到当前目录的绝对路径
 	SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 	if [ $# -lt 1 ]; then
 		bundles=(${DEFAULT_BUNDLES[@]})
 	else
+		#将输入的所有要生成的bundle组成一个数组
 		bundles=($@)
 	fi
+	# 对于要编译生成的每一个bundle,都到目录下面去找相应的shell脚本来运行
+	# ${bundles[@]}将bundles数组中的所有元素展开在这儿
 	for bundle in ${bundles[@]}; do
 		bundle $SCRIPTDIR/make/$bundle
 		echo
 	done
 }
 
+# 使用指定的参数调用main函数
 main "$@"

@@ -3,6 +3,7 @@
 #  please consider a global .gitignore https://help.github.com/articles/ignoring-files
 *~
 *.exe
+*.directory
 *.orig
 *.test
 .*.swp

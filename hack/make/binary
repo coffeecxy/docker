@@ -1,8 +1,13 @@
 #!/bin/bash
 set -e
 
+# 生成docker可执行文件
+# 第一个参数位生成的可执行文件存放的目录
+
 DEST=$1
+# VERSION为主shell传递过来的变量
 BINARY_NAME="docker-$VERSION"
+# binary_extension为主shell中定义的函数
 BINARY_EXTENSION="$(binary_extension)"
 BINARY_FULLNAME="$BINARY_NAME$BINARY_EXTENSION"
 
@@ -11,8 +16,14 @@ if [[ "$(uname -s)" == CYGWIN* ]]; then
 	DEST=$(cygpath -mw $DEST)
 fi
 
+# dirname $BASH_SOURCE可以得到当前shell所在的目录
 source "$(dirname "$BASH_SOURCE")/.go-autogen"
 
+# 当前目录为/go/src/github.com/docker/docker
+# 所以下面的go build就是用当前docker目录下面的代码生成一个可执行文件docker
+echo $(pwd)
+
+# 这几个参数都是从主shell中传递过来的
 go build \
 	-o "$DEST/$BINARY_FULLNAME" \
 	"${BUILDFLAGS[@]}" \
@@ -23,6 +34,8 @@ go build \
 	./docker
 
 echo "Created binary: $DEST/$BINARY_FULLNAME"
+# 使用docker连接到生成的docker-dev上
 ln -sf "$BINARY_FULLNAME" "$DEST/docker$BINARY_EXTENSION"
 
+# 计算生成的docker的hash值
 hash_files "$DEST/$BINARY_FULLNAME"
