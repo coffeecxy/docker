@@ -26,6 +26,7 @@ const (
 )
 
 func main() {
+
 	if reexec.Init() {
 		return
 	}
@@ -45,11 +46,13 @@ func main() {
 
 	if *flLogLevel != "" {
 		lvl, err := logrus.ParseLevel(*flLogLevel)
+		//		fmt.Println(lvl)
 		if err != nil {
 			logrus.Fatalf("Unable to parse logging level: %s", *flLogLevel)
 		}
 		setLogLevel(lvl)
 	} else {
+		// 默认使用info的log level
 		setLogLevel(logrus.InfoLevel)
 	}
 
@@ -57,9 +60,11 @@ func main() {
 	// When/if -D is removed this block can be deleted
 	if *flDebug {
 		os.Setenv("DEBUG", "1")
+		// 如果开启了debug模式,那么log就会变成debug级别
 		setLogLevel(logrus.DebugLevel)
 	}
 
+	// 解析出host
 	if len(flHosts) == 0 {
 		defaultHost := os.Getenv("DOCKER_HOST")
 		if defaultHost == "" || *flDaemon {
@@ -70,7 +75,9 @@ func main() {
 		if err != nil {
 			logrus.Fatal(err)
 		}
+
 		flHosts = append(flHosts, defaultHost)
+		//		fmt.Println(flHosts)
 	}
 
 	setDefaultConfFlag(flTrustKey, defaultTrustKeyFile)
@@ -80,16 +87,23 @@ func main() {
 			flag.Usage()
 			return
 		}
+		// 如果要运行一个deamon,从这儿开始
 		mainDaemon()
 		return
 	}
 
+	//-----------------------------
+	// 下面的代码是输入client的
 	if len(flHosts) > 1 {
 		logrus.Fatal("Please specify only one -H")
 	}
+	//将host分成两部分
 	protoAddrParts := strings.SplitN(flHosts[0], "://", 2)
+	fmt.Println(flHosts)
+	fmt.Println(protoAddrParts) //[unix /var/run/docker.sock]
 
 	var (
+		// 表示一个docker client
 		cli       *client.DockerCli
 		tlsConfig tls.Config
 	)
@@ -134,7 +148,9 @@ func main() {
 	} else {
 		cli = client.NewDockerCli(stdin, stdout, stderr, *flTrustKey, protoAddrParts[0], protoAddrParts[1], nil)
 	}
+	// 上面为出来tls的
 
+	fmt.Println("args: ", flag.Args())
 	if err := cli.Cmd(flag.Args()...); err != nil {
 		if sterr, ok := err.(*utils.StatusError); ok {
 			if sterr.Status != "" {

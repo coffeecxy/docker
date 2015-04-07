@@ -20,6 +20,7 @@ import (
 	"github.com/docker/docker/registry"
 )
 
+// DockerCli表示docker的client部分
 type DockerCli struct {
 	proto      string
 	addr       string
@@ -48,6 +49,8 @@ var funcMap = template.FuncMap{
 	},
 }
 
+// 根据给出的子命令名称,判断这个字命令是否存在.
+// 存在的话,返回其对应的函数.
 func (cli *DockerCli) getMethod(args ...string) (func(...string) error, bool) {
 	camelArgs := make([]string, len(args))
 	for i, s := range args {
@@ -56,6 +59,7 @@ func (cli *DockerCli) getMethod(args ...string) (func(...string) error, bool) {
 		}
 		camelArgs[i] = strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
 	}
+	//构造出字命令的名字,然后使用反射得到这个函数
 	methodName := "Cmd" + strings.Join(camelArgs, "")
 	method := reflect.ValueOf(cli).MethodByName(methodName)
 	if !method.IsValid() {
@@ -65,24 +69,32 @@ func (cli *DockerCli) getMethod(args ...string) (func(...string) error, bool) {
 }
 
 // Cmd executes the specified command.
+// 传递过来的参数是docker后面的所有参数组成的数组
+// 这些子命令的名字会被解析出来,然后会运行那个命令
 func (cli *DockerCli) Cmd(args ...string) error {
+	//如果给出的参数多于了一个,也就是包含了子命令以及其参数
 	if len(args) > 1 {
 		method, exists := cli.getMethod(args[:2]...)
 		if exists {
 			return method(args[2:]...)
 		}
 	}
+
 	if len(args) > 0 {
 		method, exists := cli.getMethod(args[0])
 		if !exists {
 			fmt.Fprintf(cli.err, "docker: '%s' is not a docker command. See 'docker --help'.\n", args[0])
 			os.Exit(1)
 		}
+		fmt.Println(method)
+		// 使用
 		return method(args[1:]...)
 	}
+
 	return cli.CmdHelp()
 }
 
+// 根据命令行给出的子命令来得到一个FlagSet
 func (cli *DockerCli) Subcmd(name, signature, description string, exitOnError bool) *flag.FlagSet {
 	var errorHandling flag.ErrorHandling
 	if exitOnError {
@@ -91,6 +103,8 @@ func (cli *DockerCli) Subcmd(name, signature, description string, exitOnError bo
 		errorHandling = flag.ContinueOnError
 	}
 	flags := flag.NewFlagSet(name, errorHandling)
+
+	// 自定义usage函数
 	flags.Usage = func() {
 		options := ""
 		if signature != "" {
@@ -101,9 +115,11 @@ func (cli *DockerCli) Subcmd(name, signature, description string, exitOnError bo
 		}
 		fmt.Fprintf(cli.out, "\nUsage: docker %s%s%s\n\n%s\n\n", name, options, signature, description)
 		flags.SetOutput(cli.out)
+		// 输出ps 的usage
 		flags.PrintDefaults()
 		os.Exit(0)
 	}
+
 	return flags
 }
 

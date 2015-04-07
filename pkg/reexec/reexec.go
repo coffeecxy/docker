@@ -21,12 +21,16 @@ func Register(name string, initializer func()) {
 // Init is called as the first part of the exec process and returns true if an
 // initialization function was called.
 func Init() bool {
+
+	fmt.Println(os.Args)
+
 	initializer, exists := registeredInitializers[os.Args[0]]
+
 	if exists {
 		initializer()
-
 		return true
 	}
+	//	如果不存在一个初始化的函数
 	return false
 }
 

@@ -1114,6 +1114,7 @@ var CommandLine = NewFlagSet(os.Args[0], ExitOnError)
 
 // NewFlagSet returns a new, empty flag set with the specified name and
 // error handling property.
+// FlagSet是这儿的一个核心数据结构
 func NewFlagSet(name string, errorHandling ErrorHandling) *FlagSet {
 	f := &FlagSet{
 		name:          name,

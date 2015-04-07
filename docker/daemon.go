@@ -25,6 +25,8 @@ import (
 	"github.com/docker/docker/utils"
 )
 
+// 如果使用了-d模式,那么会开启daemon
+
 const CanDaemon = true
 
 var (
@@ -194,5 +196,4 @@ func mainDaemon() {
 	if errAPI != nil {
 		logrus.Fatalf("Shutting down due to ServeAPI error: %v", errAPI)
 	}
-
 }

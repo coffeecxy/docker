@@ -11,11 +11,14 @@ import (
 	flag "github.com/docker/docker/pkg/mflag"
 )
 
+// 这个文件中全部都是对docker命令的参数的解析
+
 var (
 	dockerCertPath  = os.Getenv("DOCKER_CERT_PATH")
 	dockerTlsVerify = os.Getenv("DOCKER_TLS_VERIFY") != ""
 )
 
+// 如果环境变量中没有给出cert所在的路径,那么设置一个默认的值
 func init() {
 	if dockerCertPath == "" {
 		dockerCertPath = filepath.Join(homedir.Get(), ".docker")
@@ -57,6 +60,7 @@ func setDefaultConfFlag(flag *string, def string) {
 	}
 }
 
+// init函数会初始化上面定义的一些flag
 func init() {
 	var placeholderTrustKey string
 	// TODO use flag flag.String([]string{"i", "-identity"}, "", "Path to libtrust key file")
@@ -67,14 +71,18 @@ func init() {
 	flKey = flag.String([]string{"-tlskey"}, filepath.Join(dockerCertPath, defaultKeyFile), "Path to TLS key file")
 	opts.HostListVar(&flHosts, []string{"H", "-host"}, "Daemon socket(s) to connect to")
 
+	// 使用自定义的usage函数
 	flag.Usage = func() {
 		fmt.Fprint(os.Stdout, "Usage: docker [OPTIONS] COMMAND [arg...]\n\nA self-sufficient runtime for linux containers.\n\nOptions:\n")
 
+		// 将下面的usage输出到stderr
 		flag.CommandLine.SetOutput(os.Stdout)
+		// 所有的option的使用的输出
 		flag.PrintDefaults()
 
 		help := "\nCommands:\n"
 
+		// 输出子命令的使用方法
 		for _, command := range [][]string{
 			{"attach", "Attach to a running container"},
 			{"build", "Build an image from a Dockerfile"},

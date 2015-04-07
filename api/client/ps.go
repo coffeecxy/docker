@@ -22,6 +22,10 @@ import (
 //
 // Usage: docker ps [OPTIONS]
 func (cli *DockerCli) CmdPs(args ...string) error {
+
+	fmt.Println("here is CmdPs")
+	fmt.Println("args:", args)
+
 	var (
 		err error
 
@@ -44,6 +48,7 @@ func (cli *DockerCli) CmdPs(args ...string) error {
 	cmd.Var(&flFilter, []string{"f", "-filter"}, "Filter output based on conditions provided")
 
 	cmd.ParseFlags(args, true)
+
 	if *last == -1 && *nLatest {
 		*last = 1
 	}
@@ -85,6 +90,7 @@ func (cli *DockerCli) CmdPs(args ...string) error {
 		v.Set("filters", filterJSON)
 	}
 
+	// 从这儿可以看出,client是使用的C/S模式和docker daemon通信的
 	body, _, err := readBody(cli.call("GET", "/containers/json?"+v.Encode(), nil, nil))
 	if err != nil {
 		return err

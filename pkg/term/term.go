@@ -26,6 +26,7 @@ type Winsize struct {
 	y      uint16
 }
 
+// 返回0,1,2三个标准输入,输出,错误流
 func StdStreams() (stdIn io.ReadCloser, stdOut, stdErr io.Writer) {
 	return os.Stdin, os.Stdout, os.Stderr
 }

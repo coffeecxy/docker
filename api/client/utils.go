@@ -30,10 +30,13 @@ var (
 	ErrConnectionRefused = errors.New("Cannot connect to the Docker daemon. Is 'docker -d' running on this host?")
 )
 
+// 得到一个http client
 func (cli *DockerCli) HTTPClient() *http.Client {
 	return &http.Client{Transport: cli.transport}
 }
 
+// 将数据要post的数据进行编码
+// 数据可以是任何的数据类型
 func (cli *DockerCli) encodeData(data interface{}) (*bytes.Buffer, error) {
 	params := bytes.NewBuffer(nil)
 	if data != nil {
@@ -42,6 +45,7 @@ func (cli *DockerCli) encodeData(data interface{}) (*bytes.Buffer, error) {
 				return nil, err
 			}
 		} else {
+			// 使用json来进行编码
 			buf, err := json.Marshal(data)
 			if err != nil {
 				return nil, err
@@ -54,11 +58,19 @@ func (cli *DockerCli) encodeData(data interface{}) (*bytes.Buffer, error) {
 	return params, nil
 }
 
+// 发起向docker daemon的请求
+// method,path为请求的方法和路径
+// in为请求的body,一般是post的时候会使用到
+// headers为其头部
 func (cli *DockerCli) clientRequest(method, path string, in io.Reader, headers map[string][]string) (io.ReadCloser, string, int, error) {
+	// 应该有数据被传输
 	expectedPayload := (method == "POST" || method == "PUT")
+	// 如果应该有数据要传输,但是又没有数据,那么新建一个空的数据
 	if expectedPayload && in == nil {
 		in = bytes.NewReader([]byte{})
 	}
+	fmt.Println(fmt.Sprintf("/v%s%s", api.APIVERSION, path))
+	// /v1.18/containers/json?
 	req, err := http.NewRequest(method, fmt.Sprintf("/v%s%s", api.APIVERSION, path), in)
 	if err != nil {
 		return nil, "", -1, err
@@ -152,7 +164,12 @@ func (cli *DockerCli) clientRequestAttemptLogin(method, path string, in io.Reade
 	return body, statusCode, err
 }
 
+// call 向docker daemon发出请求,可以通过支持的各种网络
+// method和path是方法和路径
+// data是对于post提交的数据,headers是头部
+// 返回response的body,status code,错误类型
 func (cli *DockerCli) call(method, path string, data interface{}, headers map[string][]string) (io.ReadCloser, int, error) {
+	// 得到json表示的传输数据
 	params, err := cli.encodeData(data)
 	if err != nil {
 		return nil, -1, err
@@ -162,6 +179,7 @@ func (cli *DockerCli) call(method, path string, data interface{}, headers map[st
 		if headers == nil {
 			headers = make(map[string][]string)
 		}
+		// 标明使用的是json编码
 		headers["Content-Type"] = []string{"application/json"}
 	}
 
