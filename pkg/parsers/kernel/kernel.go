@@ -6,6 +6,7 @@ import (
 	"fmt"
 )
 
+// 用来表示Linux的kernel版本信息
 type KernelVersionInfo struct {
 	Kernel int
 	Major  int

@@ -2,9 +2,13 @@
 
 package daemon
 
-import "github.com/docker/libcontainer/selinux"
+import (
+	"github.com/Sirupsen/logrus"
+	"github.com/docker/libcontainer/selinux"
+)
 
 func selinuxSetDisabled() {
+	logrus.Debugf("[cxy] selinx disabled")
 	selinux.SetDisabled()
 }
 

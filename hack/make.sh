@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 只要又错误,那么马上退出执行
+# 只要有错误,那么马上退出执行
 set -e
 
 # This script builds various binary artifacts from a checkout of the docker

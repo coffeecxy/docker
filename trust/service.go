@@ -9,6 +9,7 @@ import (
 	"github.com/docker/libtrust"
 )
 
+// TrustStore向eng中加入一些handler
 func (t *TrustStore) Install(eng *engine.Engine) error {
 	for name, handler := range map[string]engine.Handler{
 		"trust_key_check":   t.CmdCheckKey,

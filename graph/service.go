@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/image"
 )
 
+// 向eng中注册一堆的和graph相关的handler
 func (s *TagStore) Install(eng *engine.Engine) error {
 	for name, handler := range map[string]engine.Handler{
 		"image_set":      s.CmdSet,

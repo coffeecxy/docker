@@ -36,11 +36,13 @@ var validCommitCommands = map[string]bool{
 	"onbuild":    true,
 }
 
+// BuilderJob 中包含daemon和其中包含的engine
 type BuilderJob struct {
 	Engine *engine.Engine
 	Daemon *daemon.Daemon
 }
 
+// Install 向其中的engine中加入一些handler
 func (b *BuilderJob) Install() {
 	b.Engine.Register("build", b.CmdBuild)
 	b.Engine.Register("build_config", b.CmdBuildConfig)

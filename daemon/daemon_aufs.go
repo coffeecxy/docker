@@ -13,7 +13,7 @@ import (
 // If aufs driver is not built, this func is a noop.
 func migrateIfAufs(driver graphdriver.Driver, root string) error {
 	if ad, ok := driver.(*aufs.Driver); ok {
-		logrus.Debugf("Migrating existing containers")
+		logrus.Debugf("Migrating existing containers, the driver is aufs")
 		if err := ad.Migrate(root, graph.SetupInitLayer); err != nil {
 			return err
 		}

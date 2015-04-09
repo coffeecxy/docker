@@ -31,6 +31,7 @@ func New() *Events {
 }
 
 // Install installs events public api in docker engine
+// 往docker engine中加入关于event的api
 func (e *Events) Install(eng *engine.Engine) error {
 	// Here you should describe public interface
 	jobs := map[string]engine.Handler{

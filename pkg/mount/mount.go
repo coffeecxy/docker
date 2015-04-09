@@ -10,6 +10,7 @@ func GetMounts() ([]*MountInfo, error) {
 
 // Looks at /proc/self/mountinfo to determine of the specified
 // mountpoint has been mounted
+// 查看指定的mountpoint在当前进程中是否被挂载了
 func Mounted(mountpoint string) (bool, error) {
 	entries, err := parseMountTable()
 	if err != nil {
@@ -28,6 +29,10 @@ func Mounted(mountpoint string) (bool, error) {
 // Mount the specified options at the target path only if
 // the target is not mounted
 // Options must be specified as fstab style
+// device为要挂载的文件系统, /dev/sda1
+// target为挂载点, /mnt/mnt1
+// mType为挂载的文件系统类型, extfs
+// options为挂载选项
 func Mount(device, target, mType, options string) error {
 	flag, _ := parseOptions(options)
 	if flag&REMOUNT != REMOUNT {

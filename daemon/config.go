@@ -3,6 +3,7 @@ package daemon
 import (
 	"net"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/networkdriver"
 	"github.com/docker/docker/opts"
 	flag "github.com/docker/docker/pkg/mflag"
@@ -19,31 +20,33 @@ const (
 // These are the configuration settings that you pass
 // to the docker daemon when you launch it with say: `docker -d -e lxc`
 // FIXME: separate runtime configuration from http api configuration
+// 包含一个docker deamon运行的配置信息,这个在新建一个docker daemon之前会被成功的
+// 根据命令行的选项配置好
 type Config struct {
-	Pidfile                     string
-	Root                        string
-	AutoRestart                 bool
-	Dns                         []string
-	DnsSearch                   []string
+	Pidfile                     string   // 所属进程的pid文件
+	Root                        string   // 运行的时候的root路径,默认是/var/lib/docker
+	AutoRestart                 bool     //现在默认就是自动重启了
+	Dns                         []string // docker使用的dns的ip地址
+	DnsSearch                   []string // dns域名
 	EnableIPv6                  bool
 	EnableIptables              bool
 	EnableIpForward             bool
-	EnableIpMasq                bool
-	DefaultIp                   net.IP
+	EnableIpMasq                bool   // ip伪装技术
+	DefaultIp                   net.IP //绑定端口时使用的默认ip
 	BridgeIface                 string
 	BridgeIP                    string
 	FixedCIDR                   string
 	FixedCIDRv6                 string
-	InterContainerCommunication bool
-	GraphDriver                 string
-	GraphOptions                []string
-	ExecDriver                  string
-	Mtu                         int
+	InterContainerCommunication bool     //是否允许容器间进行通信
+	GraphDriver                 string   //docker运行的时候使用的存储驱动 默认值为空
+	GraphOptions                []string //存储驱动选项
+	ExecDriver                  string   //exec驱动
+	Mtu                         int      //容器网络的MTU
 	SocketGroup                 string
 	EnableCors                  bool
 	CorsHeaders                 string
 	DisableNetwork              bool
-	EnableSelinuxSupport        bool
+	EnableSelinuxSupport        bool //启用selinux
 	Context                     map[string][]string
 	TrustKeyPath                string
 	Labels                      []string
@@ -88,7 +91,9 @@ func (config *Config) InstallFlags() {
 
 func getDefaultNetworkMtu() int {
 	if iface, err := networkdriver.GetDefaultRouteIface(); err == nil {
+		logrus.Infoln("[cxy] deamonConfig: use interface mtu")
 		return iface.MTU
 	}
+	logrus.Infoln("[cxy] deamonConfig: use default mtu")
 	return defaultNetworkMtu
 }

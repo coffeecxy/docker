@@ -20,15 +20,19 @@ import (
 //
 func Trap(cleanup func()) {
 	c := make(chan os.Signal, 1)
+
+	//设置要被trap的signal列表
 	signals := []os.Signal{os.Interrupt, syscall.SIGTERM}
 	if os.Getenv("DEBUG") == "" {
 		signals = append(signals, syscall.SIGQUIT)
 	}
+
 	gosignal.Notify(c, signals...)
-	go func() {
+
+	go func() { //开启另外一个routine,在这个routine中专门进行signal的处理
 		interruptCount := uint32(0)
-		for sig := range c {
-			go func(sig os.Signal) {
+		for sig := range c { // 不断从channel中读出数据
+			go func(sig os.Signal) { //对于扑捉到的每一个信号,用一个新的routine来处理
 				logrus.Infof("Received signal '%v', starting shutdown of docker...", sig)
 				switch sig {
 				case os.Interrupt, syscall.SIGTERM:

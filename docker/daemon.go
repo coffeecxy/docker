@@ -29,6 +29,7 @@ import (
 
 const CanDaemon = true
 
+// 初始化daemon的配置
 var (
 	daemonCfg   = &daemon.Config{}
 	registryCfg = &registry.Options{}
@@ -39,6 +40,8 @@ func init() {
 	registryCfg.InstallFlags()
 }
 
+// 在以前的版本中,docker key存放的地方和现在版本存放的地方是不同的了,
+// 这个函数完成将key进行迁移
 func migrateKey() (err error) {
 	// Migrate trust key if exists at ~/.docker/key.json and owned by current user
 	oldPath := filepath.Join(homedir.Get(), ".docker", defaultTrustKeyFile)
@@ -80,14 +83,25 @@ func migrateKey() (err error) {
 }
 
 func mainDaemon() {
+
+	//	fmt.Println(flag.NArg())
+
+	// 如果解析了docker的选项之后还剩下了其他的参数,那么其为命令
+	// 那么这个docker应该是一个client,所以就要退出
 	if flag.NArg() != 0 {
 		flag.Usage()
 		return
 	}
 
+	// 设置log的时间格式
 	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: timeutils.RFC3339NanoFixed})
 
+	// 新建一个Engine
 	eng := engine.New()
+
+	// eng.Shutdown为docker要退出的时候要使用的clearup函数
+	// 因为docker daemon自己是不会退出的,所以都是由其他的信号过来导致的退出,这里就是
+	// 处理退出之前要做的事情
 	signal.Trap(eng.Shutdown)
 
 	if err := migrateKey(); err != nil {
@@ -109,13 +123,17 @@ func mainDaemon() {
 	// the http api so that connections don't fail while the daemon
 	// is booting
 	daemonInitWait := make(chan error)
+	// 在后台启动一个docker daemon,这样当前routine还可以处理serveapi的初始化工作
 	go func() {
+		// 使用init中初始化的deamonCfg和上面配置好的eng来初始化一个daemon
 		d, err := daemon.NewDaemon(daemonCfg, eng)
 		if err != nil {
 			daemonInitWait <- err
 			return
 		}
 
+		// 在调试的时候,会发现这个log并不是马上就出现了,因为其是在另外的一个routine
+		// 中运行的,所以输出的时间是不定的
 		logrus.Infof("docker daemon: %s %s; execdriver: %s; graphdriver: %s",
 			dockerversion.VERSION,
 			dockerversion.GITCOMMIT,
@@ -133,6 +151,8 @@ func mainDaemon() {
 
 		// after the daemon is done setting up we can tell the api to start
 		// accepting connections
+		// 成功启动了docker daemon之后,运行acceptconnections这个job,让系统知道
+		// 这个daemon可以接收进来的连接了
 		if err := eng.Job("acceptconnections").Run(); err != nil {
 			daemonInitWait <- err
 			return
@@ -141,7 +161,10 @@ func mainDaemon() {
 	}()
 
 	// Serve api
+	// 在执行serveapi这个job之前,设置其环境变量,这个job的参数为daemon要支持的proto数组
 	job := eng.Job("serveapi", flHosts...)
+	logrus.Infof("[cxy] serveapi: hosts: %v", flHosts)
+
 	job.SetenvBool("Logging", true)
 	job.SetenvBool("EnableCors", daemonCfg.EnableCors)
 	job.Setenv("CorsHeaders", daemonCfg.CorsHeaders)
@@ -165,12 +188,14 @@ func mainDaemon() {
 			serveAPIWait <- err
 			return
 		}
+		// 一般的,serveapi这个job不会对应的routine会被阻塞,这儿不会被执行
 		serveAPIWait <- nil
 	}()
 
 	// Wait for the daemon startup goroutine to finish
 	// This makes sure we can actually cleanly shutdown the daemon
 	logrus.Debug("waiting for daemon to initialize")
+	// 如果从daemonInitWait中读出了值,说明用于初始化daemon的routine完成了
 	errDaemon := <-daemonInitWait
 	if errDaemon != nil {
 		eng.Shutdown()
@@ -189,9 +214,11 @@ func mainDaemon() {
 
 	// Daemon is fully initialized and handling API traffic
 	// Wait for serve API job to complete
+	// 如果serveAPIWait中可以读出值了,说明被外部的kill中断了
 	errAPI := <-serveAPIWait
 	// If we have an error here it is unique to API (as daemonErr would have
 	// exited the daemon process above)
+	logrus.Infof("[cxy] deamon: serveapi end")
 	eng.Shutdown()
 	if errAPI != nil {
 		logrus.Fatalf("Shutting down due to ServeAPI error: %v", errAPI)

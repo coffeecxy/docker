@@ -21,7 +21,7 @@ const (
 	Insert Action = "-I"
 	Nat    Table  = "nat"
 	Filter Table  = "filter"
-	Mangle Table  = "mangle"
+	Mangle Table  = "mangle" // 如果要对过来的package内部的信息或者头部进行更改,使用这个table
 )
 
 var (
@@ -243,7 +243,10 @@ func (c *Chain) Remove() error {
 }
 
 // Check if a rule exists
+// 查看在iptables中一个给定的rule是不是已经存在了
+// table为要查看的table,nat,filter,mangle中的一个
 func Exists(table Table, chain string, rule ...string) bool {
+	// 默认要检查filter这个table
 	if string(table) == "" {
 		table = Filter
 	}

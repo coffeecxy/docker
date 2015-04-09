@@ -25,10 +25,12 @@ const (
 	   (9) filesystem type:  name of filesystem of the form "type[.subtype]"
 	   (10) mount source:  filesystem specific information or "none"
 	   (11) super options:  per super block options*/
+	// /proc/self/mountinfo的每一行都是这样的
 	mountinfoFormat = "%d %d %d:%d %s %s %s %s"
 )
 
 // Parse /proc/self/mountinfo because comparing Dev and ino does not work from bind mounts
+// 在linux中,现在都是使用/proc/self/moutinfo文件来查看当前进程挂载的文件系统
 func parseMountTable() ([]*MountInfo, error) {
 	f, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
@@ -39,6 +41,7 @@ func parseMountTable() ([]*MountInfo, error) {
 	return parseInfoFile(f)
 }
 
+// 解析/proc/self/mountinfo文件
 func parseInfoFile(r io.Reader) ([]*MountInfo, error) {
 	var (
 		s   = bufio.NewScanner(r)
@@ -77,6 +80,7 @@ func parseInfoFile(r io.Reader) ([]*MountInfo, error) {
 		p.VfsOpts = strings.Join(postSeparatorFields[2:], " ")
 		out = append(out, p)
 	}
+	//	logrus.Infof("[cxy] parseInfoFile: %+v", out)
 	return out, nil
 }
 

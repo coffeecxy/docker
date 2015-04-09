@@ -27,6 +27,8 @@ const (
 
 func main() {
 
+	logrus.Infoln("here is a info line")
+
 	if reexec.Init() {
 		return
 	}
@@ -88,19 +90,22 @@ func main() {
 			return
 		}
 		// 如果要运行一个deamon,从这儿开始
+		// 一般来说,daemon都不会自动退出的
 		mainDaemon()
 		return
 	}
 
 	//-----------------------------
-	// 下面的代码是输入client的
+
+	// 下面的代码是client处理的
 	if len(flHosts) > 1 {
 		logrus.Fatal("Please specify only one -H")
 	}
 	//将host分成两部分
 	protoAddrParts := strings.SplitN(flHosts[0], "://", 2)
-	fmt.Println(flHosts)
-	fmt.Println(protoAddrParts) //[unix /var/run/docker.sock]
+
+	//	fmt.Println(flHosts)
+	//	fmt.Println(protoAddrParts) //[unix /var/run/docker.sock]
 
 	var (
 		// 表示一个docker client
@@ -146,11 +151,11 @@ func main() {
 	if *flTls || *flTlsVerify {
 		cli = client.NewDockerCli(stdin, stdout, stderr, *flTrustKey, protoAddrParts[0], protoAddrParts[1], &tlsConfig)
 	} else {
+		// 创建一个docker client
 		cli = client.NewDockerCli(stdin, stdout, stderr, *flTrustKey, protoAddrParts[0], protoAddrParts[1], nil)
 	}
-	// 上面为出来tls的
 
-	fmt.Println("args: ", flag.Args())
+	// docker client开始处理命令
 	if err := cli.Cmd(flag.Args()...); err != nil {
 		if sterr, ok := err.(*utils.StatusError); ok {
 			if sterr.Status != "" {

@@ -58,6 +58,7 @@ func NewGraph(root string, driver graphdriver.Driver) (*Graph, error) {
 	return graph, nil
 }
 
+// 修复
 func (graph *Graph) restore() error {
 	dir, err := ioutil.ReadDir(graph.Root)
 	if err != nil {

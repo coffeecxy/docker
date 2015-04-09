@@ -84,12 +84,14 @@ var (
 	ipAllocator       = ipallocator.New()
 )
 
+// init_networkdriver对应的handler函数
 func InitDriver(job *engine.Job) error {
 	var (
-		networkv4      *net.IPNet
-		networkv6      *net.IPNet
-		addrv4         net.Addr
-		addrsv6        []net.Addr
+		networkv4 *net.IPNet
+		networkv6 *net.IPNet
+		addrv4    net.Addr
+		addrsv6   []net.Addr
+		// 使用job中的环境变量对这些局部变量进行初始化
 		enableIPTables = job.GetenvBool("EnableIptables")
 		enableIPv6     = job.GetenvBool("EnableIPv6")
 		icc            = job.GetenvBool("InterContainerCommunication")
@@ -110,15 +112,18 @@ func InitDriver(job *engine.Job) error {
 	usingDefaultBridge := false
 	if bridgeIface == "" {
 		usingDefaultBridge = true
-		bridgeIface = DefaultNetworkBridge
+		// 网桥设备的名称,在主机中使用ifconifg,可以看到这个网桥设备
+		bridgeIface = DefaultNetworkBridge //docker0
 	}
 
+	// 得到docker0的各个地址
 	addrv4, addrsv6, err := networkdriver.GetIfaceAddr(bridgeIface)
 
+	//现在还没有docker0这个interface
 	if err != nil {
 		// No Bridge existent, create one
 		// If we're not using the default bridge, fail without trying to create it
-		if !usingDefaultBridge {
+		if !usingDefaultBridge { //使用默认的bridge,我们一般都会使用默认的bridge
 			return err
 		}
 
@@ -199,13 +204,14 @@ func InitDriver(job *engine.Job) error {
 	}
 
 	// Configure iptables for link support
-	if enableIPTables {
+	if enableIPTables { //默认是需要开启iptables的
 		if err := setupIPTables(addrv4, icc, ipMasq); err != nil {
 			return err
 		}
 
 	}
 
+	// 允许数据包转发
 	if ipForward {
 		// Enable IPv4 forwarding
 		if err := ioutil.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte{'1', '\n'}, 0644); err != nil {
@@ -283,11 +289,15 @@ func InitDriver(job *engine.Job) error {
 	return nil
 }
 
+// addr为网桥的网络地址
+// icc为允许容器间通信
+// ipmasq为允许ip伪装
 func setupIPTables(addr net.Addr, icc, ipmasq bool) error {
-	// Enable NAT
 
+	// Enable NAT
 	if ipmasq {
 		natArgs := []string{"-s", addr.String(), "!", "-o", bridgeIface, "-j", "MASQUERADE"}
+		logrus.Infof("[cxy] iptables: natArgs=%v", natArgs)
 
 		if !iptables.Exists(iptables.Nat, "POSTROUTING", natArgs...) {
 			if output, err := iptables.Raw(append([]string{
@@ -349,6 +359,7 @@ func setupIPTables(addr net.Addr, icc, ipmasq bool) error {
 			return &iptables.ChainError{Chain: "FORWARD incoming", Output: output}
 		}
 	}
+
 	return nil
 }
 

@@ -12,10 +12,13 @@ import (
 	"github.com/docker/docker/pkg/parsers/kernel"
 )
 
+// 为eng注册默认的buildin的handler
 func Register(eng *engine.Engine) error {
+	// 注册init_networkdriver的handler
 	if err := daemon(eng); err != nil {
 		return err
 	}
+	// 注册serveapi和acceptconnections两个handler
 	if err := remote(eng); err != nil {
 		return err
 	}
@@ -68,6 +71,7 @@ func dockerVersion(job *engine.Job) error {
 	if kernelVersion, err := kernel.GetKernelVersion(); err == nil {
 		v.Set("KernelVersion", kernelVersion.String())
 	}
+	// 向当前这个job的stdout中输出所有的version信息
 	if _, err := v.WriteTo(job.Stdout); err != nil {
 		return err
 	}

@@ -15,6 +15,7 @@ import (
 //
 // Usage: docker pull [OPTIONS] IMAGENAME[:TAG|@DIGEST]
 func (cli *DockerCli) CmdPull(args ...string) error {
+	fmt.Println("CmdPull: args:", args)
 	cmd := cli.Subcmd("pull", "NAME[:TAG|@DIGEST]", "Pull an image or a repository from the registry", true)
 	allTags := cmd.Bool([]string{"a", "-all-tags"}, false, "Download all tagged images in the repository")
 	cmd.Require(flag.Exact, 1)
@@ -34,6 +35,7 @@ func (cli *DockerCli) CmdPull(args ...string) error {
 		return fmt.Errorf("tag can't be used with --all-tags/-a")
 	}
 
+	// fromImage=fromImage=ubuntu%3Alatest
 	v.Set("fromImage", newRemote)
 
 	// Resolve the Repository name from fqn to RepositoryInfo

@@ -1585,6 +1585,7 @@ type Server interface {
 
 // ServeApi loops through all of the protocols sent in to docker and spawns
 // off a go routine to setup a serving http.Server for each.
+// engine中的 'serveapi'对应的handler,ServeApi正常运行的时候不会退出
 func ServeApi(job *engine.Job) error {
 	if len(job.Args) == 0 {
 		return fmt.Errorf("usage: %s PROTO://ADDR [PROTO://ADDR ...]", job.Name)
@@ -1595,11 +1596,14 @@ func ServeApi(job *engine.Job) error {
 	)
 	activationLock = make(chan struct{})
 
+	// 对每一个proto,都开启一个server
 	for _, protoAddr := range protoAddrs {
 		protoAddrParts := strings.SplitN(protoAddr, "://", 2)
 		if len(protoAddrParts) != 2 {
 			return fmt.Errorf("usage: %s PROTO://ADDR [PROTO://ADDR ...]", job.Name)
 		}
+
+		// 每个proto的server使用自己的routine
 		go func() {
 			logrus.Infof("Listening for HTTP on %s (%s)", protoAddrParts[0], protoAddrParts[1])
 			srv, err := NewServer(protoAddrParts[0], protoAddrParts[1], job)
@@ -1612,15 +1616,21 @@ func ServeApi(job *engine.Job) error {
 					logrus.Error(err)
 				}
 			})
+			// srv.Serve会一直执行, 直到外部的kill命令中断
 			if err = srv.Serve(); err != nil && strings.Contains(err.Error(), "use of closed network connection") {
 				err = nil
 			}
 			chErrors <- err
 		}()
+
 	}
 
 	for i := 0; i < len(protoAddrs); i++ {
+		//		logrus.Infof("[cxy] serveapi wait")
 		err := <-chErrors
+		// 一般的,每个proto的routine都是不会退出的,所有从chErrors中是读不出数据的
+		// 当从外部运行kill的时候,才会运行到这儿来
+		logrus.Infof("[cxy] serveapi wait end")
 		if err != nil {
 			return err
 		}

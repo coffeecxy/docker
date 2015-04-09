@@ -110,8 +110,10 @@ type Daemon struct {
 }
 
 // Install installs daemon capabilities to eng.
+// 向eng中注册很多的handler
 func (daemon *Daemon) Install(eng *engine.Engine) error {
 	// FIXME: remove ImageDelete's dependency on Daemon, then move to graph/
+	// 向这个daemon中eng中注册这些handler
 	for name, method := range map[string]engine.Handler{
 		"attach":            daemon.ContainerAttach,
 		"commit":            daemon.ContainerCommit,
@@ -145,9 +147,11 @@ func (daemon *Daemon) Install(eng *engine.Engine) error {
 			return err
 		}
 	}
+
 	if err := daemon.Repositories().Install(eng); err != nil {
 		return err
 	}
+
 	if err := daemon.trustStore.Install(eng); err != nil {
 		return err
 	}
@@ -793,6 +797,7 @@ func (daemon *Daemon) RegisterLinks(container *Container, hostConfig *runconfig.
 }
 
 // FIXME: harmonize with NewGraph()
+// 创建一个新的 docker daemon, config为其配置信息, eng为daemon中包含的用于包含Job的Engine
 func NewDaemon(config *Config, eng *engine.Engine) (*Daemon, error) {
 	daemon, err := NewDaemonFromDirectory(config, eng)
 	if err != nil {
@@ -802,23 +807,28 @@ func NewDaemon(config *Config, eng *engine.Engine) (*Daemon, error) {
 }
 
 func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error) {
-	if config.Mtu == 0 {
+	// 配置MTU
+	if config.Mtu == 0 { //如果没有通过命令行--mtu配置的话,那么默认值为0
 		config.Mtu = getDefaultNetworkMtu()
 	}
 	// Check for mutually incompatible config options
-	if config.BridgeIface != "" && config.BridgeIP != "" {
+	if config.BridgeIface != "" && config.BridgeIP != "" { // 默认两个都是空的,不会有问题
 		return nil, fmt.Errorf("You specified -b & --bip, mutually exclusive options. Please specify only one.")
 	}
+	// 默认配置两个都是true,不会有问题
+	// 默认可以在容器中使用防火墙和容器间通信
 	if !config.EnableIptables && !config.InterContainerCommunication {
 		return nil, fmt.Errorf("You specified --iptables=false with --icc=false. ICC uses iptables to function. Please set --icc or --iptables to true.")
 	}
 	if !config.EnableIptables && config.EnableIpMasq {
 		config.EnableIpMasq = false
 	}
+	// 默认配置为false,也就是要启用容器中的网络
 	config.DisableNetwork = config.BridgeIface == disableNetworkBridge
 
 	// Claim the pidfile first, to avoid any and all unexpected race conditions.
 	// Some of the init doesn't need a pidfile lock - but let's not try to be smart.
+	// 在默认的配置中,Pidfile为/var/run/docker.pid
 	if config.Pidfile != "" {
 		file, err := pidfile.New(config.Pidfile)
 		if err != nil {
@@ -837,26 +847,32 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 	if os.Geteuid() != 0 {
 		return nil, fmt.Errorf("The Docker daemon needs to be run as root")
 	}
+	// 检查Kernel的版本,如果版本过低,那么是不能运行docker的
 	if err := checkKernel(); err != nil {
 		return nil, err
 	}
 
 	// set up the tmpDir to use a canonical path
+	// 得到tmpDir的路径
 	tmp, err := tempDir(config.Root)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the TempDir under %s: %s", config.Root, err)
 	}
+	// 如果这个路径是一个链接,那么得到指向的路径
 	realTmp, err := utils.ReadSymlinkedDirectory(tmp)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the full path to the TempDir (%s): %s", tmp, err)
 	}
+	// 设置环境变量tmpdir
 	os.Setenv("TMPDIR", realTmp)
 
 	// get the canonical path to the Docker root directory
 	var realRoot string
+	// 如果命令行指定的Root不存在的话
 	if _, err := os.Stat(config.Root); err != nil && os.IsNotExist(err) {
 		realRoot = config.Root
 	} else {
+		// 如果存在,需要得到其规范路径
 		realRoot, err = utils.ReadSymlinkedDirectory(config.Root)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to get the full path to root (%s): %s", config.Root, err)
@@ -864,6 +880,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 	}
 	config.Root = realRoot
 	// Create the root directory if it doesn't exists
+	// 创建root目录
 	if err := os.MkdirAll(config.Root, 0700); err != nil && !os.IsExist(err) {
 		return nil, err
 	}
@@ -871,12 +888,12 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 	// Set the default driver
 	graphdriver.DefaultDriver = config.GraphDriver
 
-	// Load storage driver
+	// Load storage driver [graph dirver]
 	driver, err := graphdriver.New(config.Root, config.GraphOptions)
 	if err != nil {
 		return nil, fmt.Errorf("error intializing graphdriver: %v", err)
 	}
-	logrus.Debugf("Using graph driver %s", driver)
+	logrus.Debugf("Using graph driver %s", driver) // aufs
 	// register cleanup for graph driver
 	eng.OnShutdown(func() {
 		if err := driver.Cleanup(); err != nil {
@@ -898,7 +915,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 		selinuxSetDisabled()
 	}
 
-	daemonRepo := path.Join(config.Root, "containers")
+	daemonRepo := path.Join(config.Root, "containers") // /var/lib/docker/containers
 
 	if err := os.MkdirAll(daemonRepo, 0700); err != nil && !os.IsExist(err) {
 		return nil, err
@@ -910,11 +927,13 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 	}
 
 	logrus.Debug("Creating images graph")
+	// 在/var/lib/docker/graph下面创建graph
 	g, err := graph.NewGraph(path.Join(config.Root, "graph"), driver)
 	if err != nil {
 		return nil, err
 	}
 
+	// 得到vfs这个driver,用于docker中的volume的映射
 	volumesDriver, err := graphdriver.GetDriver("vfs", config.Root, config.GraphOptions)
 	if err != nil {
 		return nil, err
@@ -925,6 +944,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 		return nil, err
 	}
 
+	// 加载lts需要的key
 	trustKey, err := api.LoadOrCreateTrustKey(config.TrustKeyPath)
 	if err != nil {
 		return nil, err
@@ -945,20 +965,22 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 		return nil, fmt.Errorf("could not create trust store: %s", err)
 	}
 
-	if !config.DisableNetwork {
+	// 设置网络环境
+	if !config.DisableNetwork { //默认是开启了容器的网络环境的
 		job := eng.Job("init_networkdriver")
 
-		job.SetenvBool("EnableIptables", config.EnableIptables)
-		job.SetenvBool("InterContainerCommunication", config.InterContainerCommunication)
-		job.SetenvBool("EnableIpForward", config.EnableIpForward)
-		job.SetenvBool("EnableIpMasq", config.EnableIpMasq)
-		job.SetenvBool("EnableIPv6", config.EnableIPv6)
-		job.Setenv("BridgeIface", config.BridgeIface)
-		job.Setenv("BridgeIP", config.BridgeIP)
-		job.Setenv("FixedCIDR", config.FixedCIDR)
-		job.Setenv("FixedCIDRv6", config.FixedCIDRv6)
-		job.Setenv("DefaultBindingIP", config.DefaultIp.String())
+		job.SetenvBool("EnableIptables", config.EnableIptables)                           //true
+		job.SetenvBool("InterContainerCommunication", config.InterContainerCommunication) //true
+		job.SetenvBool("EnableIpForward", config.EnableIpForward)                         //true
+		job.SetenvBool("EnableIpMasq", config.EnableIpMasq)                               //true
+		job.SetenvBool("EnableIPv6", config.EnableIPv6)                                   // false
+		job.Setenv("BridgeIface", config.BridgeIface)                                     // ""
+		job.Setenv("BridgeIP", config.BridgeIP)                                           // "" 自动分配一个
+		job.Setenv("FixedCIDR", config.FixedCIDR)                                         // ""
+		job.Setenv("FixedCIDRv6", config.FixedCIDRv6)                                     // ""
+		job.Setenv("DefaultBindingIP", config.DefaultIp.String())                         // 0.0.0.0
 
+		// 运行的函数是bridge.InitDriver
 		if err := job.Run(); err != nil {
 			return nil, err
 		}
@@ -1231,12 +1253,14 @@ func (daemon *Daemon) ImageGetCached(imgID string, config *runconfig.Config) (*i
 }
 
 // tempDir returns the default directory to use for temporary files.
+// 如果成功,返回tempDir的路径
 func tempDir(rootDir string) (string, error) {
 	var tmpDir string
 	if tmpDir = os.Getenv("DOCKER_TMPDIR"); tmpDir == "" {
 		tmpDir = filepath.Join(rootDir, "tmp")
 	}
 	err := os.MkdirAll(tmpDir, 0700)
+	logrus.Infof("[cxy] tempDir: %s", tmpDir)
 	return tmpDir, err
 }
 
@@ -1248,8 +1272,11 @@ func checkKernel() error {
 	// without actually causing a kernel panic, so we need this workaround until
 	// the circumstances of pre-3.8 crashes are clearer.
 	// For details see http://github.com/docker/docker/issues/407
-	if k, err := kernel.GetKernelVersion(); err != nil {
-		logrus.Warnf("%s", err)
+
+	k, err := kernel.GetKernelVersion()
+	logrus.Infoln("[cxy] kernelInfo:", k)
+	if err != nil {
+		logrus.Warnf("[checkKernel] %s", err)
 	} else {
 		if kernel.CompareKernelVersion(k, &kernel.KernelVersionInfo{Kernel: 3, Major: 8, Minor: 0}) < 0 {
 			if os.Getenv("DOCKER_NOWARN_KERNEL_VERSION") == "" {

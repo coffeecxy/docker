@@ -28,15 +28,16 @@ var (
 	validDigest  = regexp.MustCompile(`[a-zA-Z0-9-_+.]+:[a-fA-F0-9]+`)
 )
 
+// TagStore用来存储仓库列表
 type TagStore struct {
-	path         string
-	graph        *Graph
+	path         string // 镜像仓库的路径
+	graph        *Graph //相应的graph
 	Repositories map[string]Repository
 	trustKey     libtrust.PrivateKey
-	sync.Mutex
+	sync.Mutex   // 操作互斥锁
 	// FIXME: move push/pull-related fields
 	// to a helper type
-	pullingPool map[string]chan struct{}
+	pullingPool map[string]chan struct{} // 记录哪些镜像正在被下载,如果某一个镜像正在被下载,其他client发起的下载请求被驳回
 	pushingPool map[string]chan struct{}
 }
 

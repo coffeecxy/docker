@@ -33,8 +33,10 @@ const (
 var (
 	DefaultDriver string
 	// All registred drivers
+	// 存放了所有的driver
 	drivers map[string]InitFunc
 	// Slice of drivers that should be used in an order
+	// 这是一个优先级数组,从前到后的检查,如果检查到有一个driver存在,就会使用这个driver
 	priority = []string{
 		"aufs",
 		"btrfs",
@@ -124,6 +126,9 @@ func init() {
 	drivers = make(map[string]InitFunc)
 }
 
+// 往drivers中注入一个记录
+// 这个函数会在各个具体的driver的init函数中被调用,最后drivers中就包含了当前实现的
+// 各个driver
 func Register(name string, initFunc InitFunc) error {
 	if _, exists := drivers[name]; exists {
 		return fmt.Errorf("Name already registered %s", name)
@@ -133,14 +138,22 @@ func Register(name string, initFunc InitFunc) error {
 	return nil
 }
 
+// GetDriver 根据指定的name,从home中得到一个driver,要使用options中的选项
 func GetDriver(name, home string, options []string) (Driver, error) {
 	if initFunc, exists := drivers[name]; exists {
+		// 调用指定driver的初始化函数,路径变成了类似于/var/lib/docker/aufs的
 		return initFunc(path.Join(home, name), options)
 	}
 	return nil, ErrNotSupported
 }
 
+// New 新建一个graph driver,
+// root为docker的工作路径
+// options为新建driver时需要的参数
 func New(root string, options []string) (driver Driver, err error) {
+	// 如果设置了DOCKER_DIRVER这个环境变量,那么使用环境变量的值
+	// 如果DefaultDriver有值,使用这个值
+	// 这样就可以让用户自定义自己要使用的driver
 	for _, name := range []string{os.Getenv("DOCKER_DRIVER"), DefaultDriver} {
 		if name != "" {
 			return GetDriver(name, root, options)
@@ -156,6 +169,7 @@ func New(root string, options []string) (driver Driver, err error) {
 			}
 			return nil, err
 		}
+		// 检测选择的graph driver的正确性
 		checkPriorDriver(name, root)
 		return driver, nil
 	}

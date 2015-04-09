@@ -426,6 +426,7 @@ func ReadSymlinkedDirectory(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to stat target '%s' of '%s': %s", realPath, path, err)
 	}
+	// 要保证链接到的路径是一个目录
 	if !realPathInfo.Mode().IsDir() {
 		return "", fmt.Errorf("canonical path points to a file '%s'", realPath)
 	}

@@ -20,7 +20,7 @@ import (
 	"github.com/docker/docker/registry"
 )
 
-// DockerCli表示docker的client部分
+// 表示一个docker client
 type DockerCli struct {
 	proto      string
 	addr       string
@@ -49,8 +49,9 @@ var funcMap = template.FuncMap{
 	},
 }
 
-// 根据给出的子命令名称,判断这个字命令是否存在.
-// 存在的话,返回其对应的函数.
+// 根据给出的子命令名称,判断这个命令是否存在.
+// args可能是一个string,也可能是两个string.
+// 如果是一个string,其为命令的名字,如果是两个string,那么为包含了子命令的命令
 func (cli *DockerCli) getMethod(args ...string) (func(...string) error, bool) {
 	camelArgs := make([]string, len(args))
 	for i, s := range args {
@@ -70,9 +71,13 @@ func (cli *DockerCli) getMethod(args ...string) (func(...string) error, bool) {
 
 // Cmd executes the specified command.
 // 传递过来的参数是docker后面的所有参数组成的数组
-// 这些子命令的名字会被解析出来,然后会运行那个命令
+// 这些命令的名字会被解析出来,然后会运行那个命令
+// 当前的args中只包含了命令的部分,docker自己的option部分不会在args中了
 func (cli *DockerCli) Cmd(args ...string) error {
-	//如果给出的参数多于了一个,也就是包含了子命令以及其参数
+
+	fmt.Println("args of Cmd: ", args)
+
+	//如果给出的参数多于了一个,先看看是不是有命令和子命令的形式
 	if len(args) > 1 {
 		method, exists := cli.getMethod(args[:2]...)
 		if exists {
@@ -80,17 +85,19 @@ func (cli *DockerCli) Cmd(args ...string) error {
 		}
 	}
 
+	//如果有参数,表示给出了一个命令
 	if len(args) > 0 {
 		method, exists := cli.getMethod(args[0])
 		if !exists {
 			fmt.Fprintf(cli.err, "docker: '%s' is not a docker command. See 'docker --help'.\n", args[0])
 			os.Exit(1)
 		}
-		fmt.Println(method)
-		// 使用
+		fmt.Println("method is:", method)
+		// 使用参数调用这个命令
 		return method(args[1:]...)
 	}
 
+	// 如果给出的命令是有问题的,那么总是输出help
 	return cli.CmdHelp()
 }
 
@@ -141,6 +148,11 @@ func (cli *DockerCli) CheckTtyInput(attachStdin, ttyMode bool) error {
 	return nil
 }
 
+// 创建一个新的docker client
+// in,out,err为这个client的输入/输出/错误流
+// keyFile为要使用TLS时的配置
+// proto,addr为和docker daemon通信使用的协议和地址
+// tlsConfig为使用TLS的配置
 func NewDockerCli(in io.ReadCloser, out, err io.Writer, keyFile string, proto, addr string, tlsConfig *tls.Config) *DockerCli {
 	var (
 		inFd          uintptr
@@ -150,6 +162,7 @@ func NewDockerCli(in io.ReadCloser, out, err io.Writer, keyFile string, proto, a
 		scheme        = "http"
 	)
 
+	// 如果要使用tls,那么就要使用http
 	if tlsConfig != nil {
 		scheme = "https"
 	}
@@ -160,7 +173,7 @@ func NewDockerCli(in io.ReadCloser, out, err io.Writer, keyFile string, proto, a
 	if out != nil {
 		outFd, isTerminalOut = term.GetFdInfo(out)
 	}
-
+	//如果错误流没有设置,设置为输出流
 	if err == nil {
 		err = out
 	}
@@ -183,7 +196,7 @@ func NewDockerCli(in io.ReadCloser, out, err io.Writer, keyFile string, proto, a
 		tr.Dial = (&net.Dialer{Timeout: timeout}).Dial
 	}
 
-	return &DockerCli{
+	dockerClient := &DockerCli{
 		proto:         proto,
 		addr:          addr,
 		in:            in,
@@ -198,4 +211,9 @@ func NewDockerCli(in io.ReadCloser, out, err io.Writer, keyFile string, proto, a
 		scheme:        scheme,
 		transport:     tr,
 	}
+
+	fmt.Printf("%+v\n", dockerClient)
+	// &{proto:unix addr:/var/run/docker.sock configFile:<nil> in:0xc20802c000 out:0xc20802c008 err:0xc20802c010 keyFile:/home/cxy/.docker/key.json tlsConfig:<nil> scheme:http inFd:0 outFd:1 isTerminalIn:true isTerminalOut:true transport:0xc208084240}
+
+	return dockerClient
 }

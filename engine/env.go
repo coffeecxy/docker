@@ -12,13 +12,16 @@ import (
 	"github.com/docker/docker/utils"
 )
 
+// Env 表示一个Job运行的环境变量,
+// 注意其为一个[]string,如果有值的环境变量为key=value的形式,没有值的环境变量是key的形式
 type Env []string
 
-// Get returns the last value associated with the given key. If there are no
+// Get returns the *last* value associated with the given key. If there are no
 // values associated with the key, Get returns the empty string.
 func (env *Env) Get(key string) (value string) {
 	// not using Map() because of the extra allocations https://github.com/docker/docker/pull/7488#issuecomment-51638315
 	for _, kv := range *env {
+		// 检查有=号的
 		if strings.Index(kv, "=") == -1 {
 			continue
 		}
@@ -26,6 +29,7 @@ func (env *Env) Get(key string) (value string) {
 		if parts[0] != key {
 			continue
 		}
+		// 如果有=号,但是=号后面没有值
 		if len(parts) < 2 {
 			value = ""
 		} else {
@@ -35,6 +39,7 @@ func (env *Env) Get(key string) (value string) {
 	return
 }
 
+// Exists查看Evn中是否存在一个key
 func (env *Env) Exists(key string) bool {
 	_, exists := env.Map()[key]
 	return exists
@@ -54,14 +59,17 @@ func (env *Env) Init(src *Env) {
 	}
 }
 
+// GetBool在Env中查看给出key对应的bool值
 func (env *Env) GetBool(key string) (value bool) {
 	s := strings.ToLower(strings.Trim(env.Get(key), " \t"))
+	// 这些string值都表示bool的false
 	if s == "" || s == "0" || s == "no" || s == "false" || s == "none" {
 		return false
 	}
 	return true
 }
 
+// SetBool向Env中加入一个bool类型的环境变量
 func (env *Env) SetBool(key string, value bool) {
 	if value {
 		env.Set(key, "1")
@@ -83,9 +91,12 @@ func (env *Env) GetInt(key string) int {
 	return int(env.GetInt64(key))
 }
 
+// GetInt64从Env中找出key对应的int64值
 func (env *Env) GetInt64(key string) int64 {
 	s := strings.Trim(env.Get(key), " \t")
+	// 按照10进制进行转换
 	val, err := strconv.ParseInt(s, 10, 64)
+	// 转换不成功就使用默认值0
 	if err != nil {
 		return 0
 	}
@@ -156,6 +167,7 @@ func (env *Env) SetList(key string, value []string) error {
 	return env.SetJson(key, value)
 }
 
+// Set向Env中加入一个环境变量,使用k=v的形式,默认使用的是string
 func (env *Env) Set(key, value string) {
 	*env = append(*env, key+"="+value)
 }
@@ -279,6 +291,7 @@ func (env *Env) Import(src interface{}) (err error) {
 	return nil
 }
 
+// Map将env中的kv对放到一个map中去
 func (env *Env) Map() map[string]string {
 	m := make(map[string]string)
 	for _, kv := range *env {

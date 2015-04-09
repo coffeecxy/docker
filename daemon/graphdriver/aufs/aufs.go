@@ -4,13 +4,13 @@ aufs driver directory structure
 
 .
 ├── layers // Metadata of layers
-│   ├── 1
-│   ├── 2
-│   └── 3
+│   ├── 1
+│   ├── 2
+│   └── 3
 ├── diff  // Content of the layer
-│   ├── 1  // Contains layers that need to be mounted for the id
-│   ├── 2
-│   └── 3
+│   ├── 1  // Contains layers that need to be mounted for the id
+│   ├── 2
+│   └── 3
 └── mnt    // Mount points for the rw layers to be mounted
     ├── 1
     ├── 2
@@ -43,6 +43,7 @@ import (
 
 var (
 	ErrAufsNotSupported = fmt.Errorf("AUFS was not found in /proc/filesystems")
+
 	incompatibleFsMagic = []graphdriver.FsMagic{
 		graphdriver.FsMagicBtrfs,
 		graphdriver.FsMagicAufs,
@@ -65,20 +66,27 @@ type Driver struct {
 
 // New returns a new AUFS driver.
 // An error is returned if AUFS is not supported.
+// 在当前的实现中,使用的是aufs这个driver,所以会调用这个初始化函数来得到aufs这个driver
+// root为driver的路径 /var/lib/docker/aufs
 func Init(root string, options []string) (graphdriver.Driver, error) {
 
 	// Try to load the aufs kernel module
+	// 保证kernel是支持aufs
 	if err := supportsAufs(); err != nil {
 		return nil, graphdriver.ErrNotSupported
 	}
 
+	// root所处的文件系统的magic数
 	fsMagic, err := graphdriver.GetFSMagic(root)
 	if err != nil {
 		return nil, err
 	}
+	// backingFs一般为extfs
 	if fsName, ok := graphdriver.FsNames[fsMagic]; ok {
 		backingFs = fsName
 	}
+
+	logrus.Infof("[cxy] aufsInit: root=%s fs=%s", root, backingFs)
 
 	for _, magic := range incompatibleFsMagic {
 		if fsMagic == magic {
@@ -101,6 +109,7 @@ func Init(root string, options []string) (graphdriver.Driver, error) {
 	// if it already exists
 	// If not populate the dir structure
 	if err := os.MkdirAll(root, 0755); err != nil {
+		// err!=nil,表示有错误发生,但是如果这个错误是要新建的目录已经存在了
 		if os.IsExist(err) {
 			return a, nil
 		}
@@ -111,6 +120,7 @@ func Init(root string, options []string) (graphdriver.Driver, error) {
 		return nil, err
 	}
 
+	//新建mnt,diff,layers三个子目录
 	for _, p := range paths {
 		if err := os.MkdirAll(path.Join(root, p), 0755); err != nil {
 			return nil, err
@@ -125,6 +135,7 @@ func Init(root string, options []string) (graphdriver.Driver, error) {
 func supportsAufs() error {
 	// We can try to modprobe aufs first before looking at
 	// proc/filesystems for when aufs is supported
+	// 先使用modprobe将aufs给加载到内核
 	exec.Command("modprobe", "aufs").Run()
 
 	f, err := os.Open("/proc/filesystems")

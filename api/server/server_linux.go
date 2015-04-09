@@ -13,6 +13,7 @@ import (
 )
 
 // NewServer sets up the required Server and does protocol specific checking.
+// 根据使用的proto和addr开启一个HTTP SERVER
 func NewServer(proto, addr string, job *engine.Job) (Server, error) {
 	// Basic error and sanity checking
 	switch proto {
@@ -27,6 +28,7 @@ func NewServer(proto, addr string, job *engine.Job) (Server, error) {
 	}
 }
 
+// setupUnixHttp使用unix socket作为传输层,在上面运行http协议,新建一个http server
 func setupUnixHttp(addr string, job *engine.Job) (*HttpServer, error) {
 	r := createRouter(job.Eng, job.GetenvBool("Logging"), job.GetenvBool("EnableCors"), job.Getenv("CorsHeaders"), job.Getenv("Version"))
 
@@ -90,6 +92,7 @@ func serveFd(addr string, job *engine.Job) error {
 }
 
 // Called through eng.Job("acceptconnections")
+// 在docker daemon创建成功之后,会调用这个Job来通知系统其可以接收请求了
 func AcceptConnections(job *engine.Job) error {
 	// Tell the init daemon we are accepting requests
 	go systemd.SdNotify("READY=1")

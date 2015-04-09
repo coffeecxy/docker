@@ -22,7 +22,7 @@ type Job struct {
 	Eng     *Engine
 	Name    string
 	Args    []string
-	env     *Env
+	env     *Env // 这个job执行的时候的环境变量
 	Stdout  *Output
 	Stderr  *Output
 	Stdin   *Input
@@ -39,6 +39,7 @@ type Job struct {
 
 // Run executes the job and blocks until the job completes.
 // If the job fails it returns an error
+// 在engine中运行这个job,在job退出之前,会一直阻塞
 func (job *Job) Run() (err error) {
 	defer func() {
 		// Wait for all background tasks to complete
@@ -76,7 +77,9 @@ func (job *Job) Run() (err error) {
 	}
 	// Log beginning and end of the job
 	if job.Eng.Logging {
+		// +job表示engine在运行这个job
 		logrus.Infof("+job %s", job.CallString())
+		// 不管是否成功的运行了这个job,都会到这儿来
 		defer func() {
 			okerr := "OK"
 			if err != nil {
@@ -86,6 +89,7 @@ func (job *Job) Run() (err error) {
 		}()
 	}
 
+	// job的handler不能是空的
 	if job.handler == nil {
 		return fmt.Errorf("%s: command not found", job.Name)
 	}
@@ -93,12 +97,16 @@ func (job *Job) Run() (err error) {
 	var errorMessage = bytes.NewBuffer(nil)
 	job.Stderr.Add(errorMessage)
 
+	// *运行这个job*
 	err = job.handler(job)
+	// 记录job完成的时间
 	job.end = time.Now()
 
 	return
 }
 
+// 执行这个job的名字以及使用的参数,
+// 一般用在友好的显示这个job的调用
 func (job *Job) CallString() string {
 	return fmt.Sprintf("%s(%s)", job.Name, strings.Join(job.Args, ", "))
 }

@@ -23,12 +23,14 @@ type Installer interface {
 
 type Handler func(*Job) error
 
+// 初始化一个global handlers
 var globalHandlers map[string]Handler
 
 func init() {
 	globalHandlers = make(map[string]Handler)
 }
 
+// Register 向global handlers中注册一个handler
 func Register(name string, handler Handler) error {
 	_, exists := globalHandlers[name]
 	if exists {
@@ -46,7 +48,7 @@ func unregister(name string) {
 // It acts as a store for *containers*, and allows manipulation of these
 // containers by executing *jobs*.
 type Engine struct {
-	handlers     map[string]Handler
+	handlers     map[string]Handler //存储了所有的handler
 	catchall     Handler
 	hack         Hack // data for temporary hackery (see hack.go)
 	id           string
@@ -61,6 +63,7 @@ type Engine struct {
 	onShutdown   []func() // shutdown handlers
 }
 
+// Register 向当前这个Engine中注册一个handler
 func (eng *Engine) Register(name string, handler Handler) error {
 	_, exists := eng.handlers[name]
 	if exists {
@@ -84,12 +87,14 @@ func New() *Engine {
 		Stdin:    os.Stdin,
 		Logging:  true,
 	}
+	// 注册了一个commands handler
 	eng.Register("commands", func(job *Job) error {
 		for _, name := range eng.commands() {
 			job.Printf("%s\n", name)
 		}
 		return nil
 	})
+
 	// Copy existing global handlers
 	for k, v := range globalHandlers {
 		eng.handlers[k] = v
@@ -114,10 +119,11 @@ func (eng *Engine) commands() []string {
 
 // Job creates a new job which can later be executed.
 // This function mimics `Command` from the standard os/exec package.
+// 在这个engine中新建一个Job,然后可以使用Run来运行
 func (eng *Engine) Job(name string, args ...string) *Job {
 	job := &Job{
-		Eng:     eng,
-		Name:    name,
+		Eng:     eng,  // Eng为当前的engine
+		Name:    name, // Name为要创建的Job的名字
 		Args:    args,
 		Stdin:   NewInput(),
 		Stdout:  NewOutput(),
@@ -132,6 +138,7 @@ func (eng *Engine) Job(name string, args ...string) *Job {
 	}
 
 	// Catchall is shadowed by specific Register.
+	// 在engine中找出名字为name的handler,这些handler在前面已经被注入到handlers中去了
 	if handler, exists := eng.handlers[name]; exists {
 		job.handler = handler
 	} else if eng.catchall != nil && name != "" {

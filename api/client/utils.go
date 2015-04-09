@@ -119,6 +119,12 @@ func (cli *DockerCli) clientRequest(method, path string, in io.Reader, headers m
 	return resp.Body, resp.Header.Get("Content-Type"), statusCode, nil
 }
 
+// 向docker daemon发送一个请求
+// method,path,in为请求的方法,路径,数据
+// out为如果过程中又错误,那么错误输出的地方
+// index用于注册
+// cmdName为命令的名字,比如为pull
+// 返回body,statusCode,error
 func (cli *DockerCli) clientRequestAttemptLogin(method, path string, in io.Reader, out io.Writer, index *registry.IndexInfo, cmdName string) (io.ReadCloser, int, error) {
 	cmdAttempt := func(authConfig registry.AuthConfig) (io.ReadCloser, int, error) {
 		buf, err := json.Marshal(authConfig)
@@ -130,6 +136,7 @@ func (cli *DockerCli) clientRequestAttemptLogin(method, path string, in io.Reade
 		}
 
 		// begin the request
+		// 发送请求请求到daemon中去
 		body, contentType, statusCode, err := cli.clientRequest(method, path, in, map[string][]string{
 			"X-Registry-Auth": registryAuthHeader,
 		})
