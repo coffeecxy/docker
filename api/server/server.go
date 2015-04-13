@@ -54,6 +54,8 @@ func (s *HttpServer) Close() error {
 	return s.l.Close()
 }
 
+// 这个是docker中定义的一个http hander需要满足的格式,
+// 注意到http包中的HandleFun需要的 w http.ResponseWriter, r *http.Request都是存在的
 type HttpApiFunc func(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error
 
 func hijackServer(w http.ResponseWriter) (io.ReadCloser, io.Writer, error) {
@@ -325,7 +327,9 @@ func getImagesViz(eng *engine.Engine, version version.Version, w http.ResponseWr
 	return nil
 }
 
+// 如果进来的请求的method是get,path是/info,那么就会调用这个函数
 func getInfo(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	// 返回的数据类型是json
 	w.Header().Set("Content-Type", "application/json")
 	eng.ServeHTTP(w, r)
 	return nil
@@ -1273,8 +1277,11 @@ func ping(eng *engine.Engine, version version.Version, w http.ResponseWriter, r 
 	return err
 }
 
+// 根据进来的需要的匹配信息,生成一个http.HanderFunc
 func makeHttpHandler(eng *engine.Engine, logging bool, localMethod string, localRoute string, handlerFunc HttpApiFunc, corsHeaders string, dockerVersion version.Version) http.HandlerFunc {
+
 	return func(w http.ResponseWriter, r *http.Request) {
+		// 在这个handlerfun被调用的时候,也就是请求的method和path匹配的时候
 		// log the request
 		logrus.Debugf("Calling %s %s", localMethod, localRoute)
 
@@ -1282,6 +1289,7 @@ func makeHttpHandler(eng *engine.Engine, logging bool, localMethod string, local
 			logrus.Infof("%s %s", r.Method, r.RequestURI)
 		}
 
+		// 保证发起请求的docker client和docker serverapi是同一个版本的docker
 		if strings.Contains(r.Header.Get("User-Agent"), "Docker-Client/") {
 			userAgent := strings.Split(r.Header.Get("User-Agent"), "/")
 			if len(userAgent) == 2 && !dockerVersion.Equal(version.Version(userAgent[1])) {
@@ -1301,6 +1309,7 @@ func makeHttpHandler(eng *engine.Engine, logging bool, localMethod string, local
 			return
 		}
 
+		// 对于进来的请求,这个函数开始真正的处理
 		if err := handlerFunc(eng, version, w, r, mux.Vars(r)); err != nil {
 			logrus.Errorf("Handler for %s %s returned error: %s", localMethod, localRoute, err)
 			httpError(w, err)
@@ -1323,6 +1332,7 @@ func expvarHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "\n}\n")
 }
 
+// gorilla提供的直接根据request的path来找到handerfun的函数
 func AttachProfiler(router *mux.Router) {
 	router.HandleFunc("/debug/vars", expvarHandler)
 	router.HandleFunc("/debug/pprof/", pprof.Index)
@@ -1336,11 +1346,16 @@ func AttachProfiler(router *mux.Router) {
 }
 
 // we keep enableCors just for legacy usage, need to be removed in the future
+// 在docker中,使用了gorilla提供的路由器实现
 func createRouter(eng *engine.Engine, logging, enableCors bool, corsHeaders string, dockerVersion string) *mux.Router {
+	// 新建一个router,这个是mux的标准的调用方法
 	r := mux.NewRouter()
+	// 如果在DEBUG,那么运行时的信息可以通过接口访问
 	if os.Getenv("DEBUG") != "" {
 		AttachProfiler(r)
 	}
+
+	// 把路由表建立起来,docker中使用了一个很直观的方式,如果后面还有新的服务,那么只需要在这个路由表中添加一些项目就是了
 	m := map[string]map[string]HttpApiFunc{
 		"GET": {
 			"/_ping":                          ping,
@@ -1404,6 +1419,7 @@ func createRouter(eng *engine.Engine, logging, enableCors bool, corsHeaders stri
 		corsHeaders = "*"
 	}
 
+	// 遍历上面的那个数据结构
 	for method, routes := range m {
 		for route, fct := range routes {
 			logrus.Debugf("Registering %s, %s", method, route)
@@ -1413,12 +1429,15 @@ func createRouter(eng *engine.Engine, logging, enableCors bool, corsHeaders stri
 			localMethod := method
 
 			// build the handler function
+			// 这个函数很重要,使用这些参数构造出一个http.HandlerFunc
 			f := makeHttpHandler(eng, logging, localMethod, localRoute, localFct, corsHeaders, version.Version(dockerVersion))
 
 			// add the new route
-			if localRoute == "" {
+			// 调用gorilla的函数接口来在路由器中添加一个记录
+			if localRoute == "" { // 如果没有指定匹配的路径,那么路由器中的记录也没有path这个部分
 				r.Methods(localMethod).HandlerFunc(f)
 			} else {
+				// 指定了路径的,三个部分都需要给出
 				r.Path("/v{version:[0-9.]+}" + localRoute).Methods(localMethod).HandlerFunc(f)
 				r.Path(localRoute).Methods(localMethod).HandlerFunc(f)
 			}
@@ -1490,11 +1509,13 @@ func setupTls(cert, key, ca string, l net.Listener) (net.Listener, error) {
 	return tls.NewListener(l, tlsConfig), nil
 }
 
+// 创建一个新的net.Listener
 func newListener(proto, addr string, bufferRequests bool) (net.Listener, error) {
 	if bufferRequests {
 		return listenbuffer.NewListenBuffer(proto, addr, activationLock)
 	}
 
+	// 开始监听
 	return net.Listen(proto, addr)
 }
 
@@ -1585,8 +1606,11 @@ type Server interface {
 
 // ServeApi loops through all of the protocols sent in to docker and spawns
 // off a go routine to setup a serving http.Server for each.
-// engine中的 'serveapi'对应的handler,ServeApi正常运行的时候不会退出
+//
+// engine中的'serveapi'对应的handler,ServeApi正常运行的时候不会退出
 func ServeApi(job *engine.Job) error {
+
+	// 如果没有指定这个serve api运行的协议,那么就不行
 	if len(job.Args) == 0 {
 		return fmt.Errorf("usage: %s PROTO://ADDR [PROTO://ADDR ...]", job.Name)
 	}
@@ -1598,6 +1622,7 @@ func ServeApi(job *engine.Job) error {
 
 	// 对每一个proto,都开启一个server
 	for _, protoAddr := range protoAddrs {
+		// 将协议和地址分开, [unix /var/run/docker.sock],这个文件是一个socket文件
 		protoAddrParts := strings.SplitN(protoAddr, "://", 2)
 		if len(protoAddrParts) != 2 {
 			return fmt.Errorf("usage: %s PROTO://ADDR [PROTO://ADDR ...]", job.Name)
@@ -1606,6 +1631,7 @@ func ServeApi(job *engine.Job) error {
 		// 每个proto的server使用自己的routine
 		go func() {
 			logrus.Infof("Listening for HTTP on %s (%s)", protoAddrParts[0], protoAddrParts[1])
+			// 对每个列出的传输层协议,都在上面建立一个http服务器
 			srv, err := NewServer(protoAddrParts[0], protoAddrParts[1], job)
 			if err != nil {
 				chErrors <- err
@@ -1617,6 +1643,7 @@ func ServeApi(job *engine.Job) error {
 				}
 			})
 			// srv.Serve会一直执行, 直到外部的kill命令中断
+			// srv.Serve调用的是http.Serve这个函数
 			if err = srv.Serve(); err != nil && strings.Contains(err.Error(), "use of closed network connection") {
 				err = nil
 			}

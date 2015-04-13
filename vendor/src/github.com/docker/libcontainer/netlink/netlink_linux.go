@@ -1138,6 +1138,7 @@ func getIfSocket() (fd int, err error) {
 // Create the actual bridge device.  This is more backward-compatible than
 // netlink.NetworkLinkAdd and works on RHEL 6.
 func CreateBridge(name string, setMacAddr bool) error {
+	// 网络设备的名字不能超过16个字符
 	if len(name) >= IFNAMSIZ {
 		return fmt.Errorf("Interface name %s too long", name)
 	}
@@ -1152,9 +1153,12 @@ func CreateBridge(name string, setMacAddr bool) error {
 	if err != nil {
 		return err
 	}
+	// 使用ioctl这个系统调用来完成对docker0网络设备的创建
+	// 使用了netlink技术
 	if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s), SIOC_BRADDBR, uintptr(unsafe.Pointer(nameBytePtr))); err != 0 {
 		return err
 	}
+	// 设置一个随机的MAC地址
 	if setMacAddr {
 		return SetMacAddress(name, randMacAddr())
 	}
@@ -1246,6 +1250,7 @@ func SetMacAddress(name, addr string) error {
 		ifr.IfruHwaddr.Data[i] = ifrDataByte(hw[i])
 	}
 
+	// 也是使用的系统调用来完成对MAC地址的更改
 	if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s), syscall.SIOCSIFHWADDR, uintptr(unsafe.Pointer(&ifr))); err != 0 {
 		return err
 	}

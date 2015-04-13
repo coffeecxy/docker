@@ -53,6 +53,7 @@ func (i *ifaces) Get(key string) *networkInterface {
 }
 
 var (
+	// 所有可以用来作为docker0的ip
 	addrs = []string{
 		// Here we don't follow the convention of using the 1st IP of the range for the gateway.
 		// This is to use the same gateway IPs as the /24 ranges, which predate the /16 ranges.
@@ -84,14 +85,16 @@ var (
 	ipAllocator       = ipallocator.New()
 )
 
-// init_networkdriver对应的handler函数
+// engine中,init_networkdriver对应的handler函数
+// 这个函数会创建一个docker0接口,然后修改iptables来达到容器和外部通信以及容器之间的通信的功能.
 func InitDriver(job *engine.Job) error {
 	var (
 		networkv4 *net.IPNet
 		networkv6 *net.IPNet
 		addrv4    net.Addr
 		addrsv6   []net.Addr
-		// 使用job中的环境变量对这些局部变量进行初始化
+
+		// 使用job中的环境变量对这些局部变量进行初始化,这些值最开始是从命令行参数给进来的
 		enableIPTables = job.GetenvBool("EnableIptables")
 		enableIPv6     = job.GetenvBool("EnableIPv6")
 		icc            = job.GetenvBool("InterContainerCommunication")
@@ -104,29 +107,36 @@ func InitDriver(job *engine.Job) error {
 	)
 	portMapper = portmapper.New()
 
+	// 0.0.0.0
 	if defaultIP := job.Getenv("DefaultBindingIP"); defaultIP != "" {
 		defaultBindingIP = net.ParseIP(defaultIP)
+		logrus.Infof("[cxy] default binding ip: %v", defaultBindingIP)
 	}
 
 	bridgeIface = job.Getenv("BridgeIface")
 	usingDefaultBridge := false
 	if bridgeIface == "" {
 		usingDefaultBridge = true
-		// 网桥设备的名称,在主机中使用ifconifg,可以看到这个网桥设备
-		bridgeIface = DefaultNetworkBridge //docker0
+		// 网桥设备的名称,在主机中使用ifconifg,可以看到这个网桥设备,其为docker0
+		bridgeIface = DefaultNetworkBridge
 	}
 
-	// 得到docker0的各个地址
+	// 得到docker0的ip地址,同时返回了ipv4和ipv6的地址
 	addrv4, addrsv6, err := networkdriver.GetIfaceAddr(bridgeIface)
 
-	//现在还没有docker0这个interface
+	logrus.Infof("[cxy] docker0 ip address v4=%v,v6=%v", addrv4, addrsv6)
+
+	// 现在还没有docker0这个interface,那么需要新建这个interface,这是一个虚拟的网络设备,因为没有对应的实际网卡
 	if err != nil {
 		// No Bridge existent, create one
 		// If we're not using the default bridge, fail without trying to create it
-		if !usingDefaultBridge { //使用默认的bridge,我们一般都会使用默认的bridge
+		// 用户指定的网络设备不存在,那么直接退出. 也就是用户在命令行中指定要使用一个网络设备,但是这个网络
+		// 设备并不存在,那么认为是用户自己的问题,用户需要自己创建好了这个网络设备之后再指定使用这个网络设备.
+		if !usingDefaultBridge {
 			return err
 		}
 
+		// 如果使用的是默认网络设备docker0,那么就创建它,这里会使用到大量的系统调用
 		// If the iface is not found, try to create it
 		if err := configureBridge(bridgeIP, bridgeIPv6, enableIPv6); err != nil {
 			return err
@@ -144,15 +154,19 @@ func InitDriver(job *engine.Job) error {
 				logrus.Fatalf("Could not add route to IPv6 network %q via device %q", fixedCIDRv6, bridgeIface)
 			}
 		}
-	} else {
+
+	} else { //docker0已经存在,需要保证用户指定的网络参数和docker0的参数是匹配的
+
 		// Bridge exists already, getting info...
 		// Validate that the bridge ip matches the ip specified by BridgeIP
-		if bridgeIP != "" {
+		//logrus.Println("[cxy]", bridgeIP)
+		if bridgeIP != "" { // 如果在命令行中指定了bridge应该使用的IP地址
 			networkv4 = addrv4.(*net.IPNet)
 			bip, _, err := net.ParseCIDR(bridgeIP)
 			if err != nil {
 				return err
 			}
+			// 命令行中指定的docker0的ip地址和docker0已经使用的ip地址不同,错误
 			if !networkv4.IP.Equal(bip) {
 				return fmt.Errorf("Bridge ip (%s) does not match existing bridge configuration %s", networkv4.IP, bip)
 			}
@@ -204,14 +218,16 @@ func InitDriver(job *engine.Job) error {
 	}
 
 	// Configure iptables for link support
-	if enableIPTables { //默认是需要开启iptables的
+	//默认是需要开启iptables的
+	if enableIPTables {
+		// 建立一些iptable的规则,直接在主机上面使用的`iptables-save`可以看到其在iptables中添加的内容
 		if err := setupIPTables(addrv4, icc, ipMasq); err != nil {
 			return err
 		}
-
 	}
 
 	// 允许数据包转发
+	// 在linux中,默认是将数据包的转发功能关闭了的,这里打开数据包转发功能
 	if ipForward {
 		// Enable IPv4 forwarding
 		if err := ioutil.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte{'1', '\n'}, 0644); err != nil {
@@ -295,9 +311,11 @@ func InitDriver(job *engine.Job) error {
 func setupIPTables(addr net.Addr, icc, ipmasq bool) error {
 
 	// Enable NAT
+	// docker中的各个容器,如果它们要把数据发送到外面去,那么要使用地址转换
 	if ipmasq {
 		natArgs := []string{"-s", addr.String(), "!", "-o", bridgeIface, "-j", "MASQUERADE"}
-		logrus.Infof("[cxy] iptables: natArgs=%v", natArgs)
+		// -t nat -I POSTROUTING -s docker0_ip ! -o docker0 -j MASQUERADE
+		//logrus.Infof("[cxy] iptables: natArgs=%v", natArgs)
 
 		if !iptables.Exists(iptables.Nat, "POSTROUTING", natArgs...) {
 			if output, err := iptables.Raw(append([]string{
@@ -311,8 +329,8 @@ func setupIPTables(addr net.Addr, icc, ipmasq bool) error {
 
 	var (
 		args       = []string{"-i", bridgeIface, "-o", bridgeIface, "-j"}
-		acceptArgs = append(args, "ACCEPT")
-		dropArgs   = append(args, "DROP")
+		acceptArgs = append(args, "ACCEPT") // -i docker0 -o docker0 -j ACCEPT
+		dropArgs   = append(args, "DROP")   // -i docker0 -o docker0 -j DROP
 	)
 
 	if !icc {
@@ -329,6 +347,8 @@ func setupIPTables(addr net.Addr, icc, ipmasq bool) error {
 	} else {
 		iptables.Raw(append([]string{"-D", "FORWARD"}, dropArgs...)...)
 
+		// 一个包,从docker0进去,forward到docker0出去,就是一个容器向另外一个容器发送的包,允许通过
+		//-t filter -A FORWARD -i docker0 -o docker0 -j ACCEPT
 		if !iptables.Exists(iptables.Filter, "FORWARD", acceptArgs...) {
 			logrus.Debugf("Enable inter-container communication")
 			if output, err := iptables.Raw(append([]string{"-I", "FORWARD"}, acceptArgs...)...); err != nil {
@@ -340,6 +360,8 @@ func setupIPTables(addr net.Addr, icc, ipmasq bool) error {
 	}
 
 	// Accept all non-intercontainer outgoing packets
+	// -A FORWARD -i docker0 ! -o docker0 -j ACCEPT
+	// 一个包,从docker0进去,forward到不是docker0出去,那么就是从ethx出去,表示要去到外网的包,允许
 	outgoingArgs := []string{"-i", bridgeIface, "!", "-o", bridgeIface, "-j", "ACCEPT"}
 	if !iptables.Exists(iptables.Filter, "FORWARD", outgoingArgs...) {
 		if output, err := iptables.Raw(append([]string{"-I", "FORWARD"}, outgoingArgs...)...); err != nil {
@@ -372,6 +394,10 @@ func RequestPort(ip net.IP, proto string, port int) (int, error) {
 // If the bridge `bridgeIface` already exists, it will only perform the IP address association with the existing
 // bridge (fixes issue #8444)
 // If an address which doesn't conflict with existing interfaces can't be found, an error is returned.
+//
+// 创建出一个bridge,当第一次在系统上使用`docker -d`启动docker daemon的时候,此时docker0是不存在的,就会调用到这个函数来创建
+// docker0这个网络设备.
+// 如果不加参数,那么bridegeIP为空的,docker会在私有IP地址段选择一个IP. enableIPv6默认为false
 func configureBridge(bridgeIP string, bridgeIPv6 string, enableIPv6 bool) error {
 	nameservers := []string{}
 	resolvConf, _ := resolvconf.Get()
@@ -384,13 +410,14 @@ func configureBridge(bridgeIP string, bridgeIPv6 string, enableIPv6 bool) error 
 	}
 
 	var ifaceAddr string
+
 	if len(bridgeIP) != 0 {
 		_, _, err := net.ParseCIDR(bridgeIP)
 		if err != nil {
 			return err
 		}
 		ifaceAddr = bridgeIP
-	} else {
+	} else { // 如果没有指定docker0使用的ip,找一个可用的Ip地址给docker0
 		for _, addr := range addrs {
 			_, dockerNetwork, err := net.ParseCIDR(addr)
 			if err != nil {
@@ -412,6 +439,7 @@ func configureBridge(bridgeIP string, bridgeIPv6 string, enableIPv6 bool) error 
 	}
 	logrus.Debugf("Creating bridge %s with network %s", bridgeIface, ifaceAddr)
 
+	// 找到了可用使用的ip地址后,创建docker0这个网络设备
 	if err := createBridgeIface(bridgeIface); err != nil {
 		// The bridge may already exist, therefore we can ignore an "exists" error
 		if !os.IsExist(err) {
@@ -429,6 +457,7 @@ func configureBridge(bridgeIP string, bridgeIPv6 string, enableIPv6 bool) error 
 		return err
 	}
 
+	// 给docker0绑定ip地址
 	if err := netlink.NetworkLinkAddIp(iface, ipAddr, ipNet); err != nil {
 		return fmt.Errorf("Unable to add private network: %s", err)
 	}
@@ -439,6 +468,7 @@ func configureBridge(bridgeIP string, bridgeIPv6 string, enableIPv6 bool) error 
 		}
 	}
 
+	// ifup docker0
 	if err := netlink.NetworkLinkUp(iface); err != nil {
 		return fmt.Errorf("Unable to start network bridge: %s", err)
 	}
@@ -469,12 +499,13 @@ func setupIPv6Bridge(bridgeIPv6 string) error {
 	return nil
 }
 
+// 创建一个名字为name的网络设备
 func createBridgeIface(name string) error {
 	kv, err := kernel.GetKernelVersion()
 	// Only set the bridge's mac address if the kernel version is > 3.3
 	// before that it was not supported
 	setBridgeMacAddr := err == nil && (kv.Kernel >= 3 && kv.Major >= 3)
-	logrus.Debugf("setting bridge mac address = %v", setBridgeMacAddr)
+	logrus.Debugf("setting bridge mac address = %v", setBridgeMacAddr) //我的是3.16,可以设置MAC地址
 	return netlink.CreateBridge(name, setBridgeMacAddr)
 }
 

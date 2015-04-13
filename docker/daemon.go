@@ -84,8 +84,6 @@ func migrateKey() (err error) {
 
 func mainDaemon() {
 
-	//	fmt.Println(flag.NArg())
-
 	// 如果解析了docker的选项之后还剩下了其他的参数,那么其为命令
 	// 那么这个docker应该是一个client,所以就要退出
 	if flag.NArg() != 0 {
@@ -119,13 +117,15 @@ func mainDaemon() {
 		logrus.Fatal(err)
 	}
 
+	// 到这儿,eng中已经注册了一些handler了可以使用了
+
 	// load the daemon in the background so we can immediately start
 	// the http api so that connections don't fail while the daemon
 	// is booting
 	daemonInitWait := make(chan error)
 	// 在后台启动一个docker daemon,这样当前routine还可以处理serveapi的初始化工作
 	go func() {
-		// 使用init中初始化的deamonCfg和上面配置好的eng来初始化一个daemon
+		// 使用init中初始化的deamonCfg和上面配置好的eng来初始化一个daemon,这里面的逻辑很多
 		d, err := daemon.NewDaemon(daemonCfg, eng)
 		if err != nil {
 			daemonInitWait <- err
@@ -162,6 +162,8 @@ func mainDaemon() {
 
 	// Serve api
 	// 在执行serveapi这个job之前,设置其环境变量,这个job的参数为daemon要支持的proto数组
+	// 在这个routine中,开启server api
+	// [unix:///var/run/docker.sock]
 	job := eng.Job("serveapi", flHosts...)
 	logrus.Infof("[cxy] serveapi: hosts: %v", flHosts)
 
@@ -181,8 +183,10 @@ func mainDaemon() {
 	// The serve API job never exits unless an error occurs
 	// We need to start it as a goroutine and wait on it so
 	// daemon doesn't exit
+	// serveapi对应的handler运行的时候是不会停止的,所以必须把它放到另外一个routine中去
 	serveAPIWait := make(chan error)
 	go func() {
+		// 运行这个serveapi对应的handler
 		if err := job.Run(); err != nil {
 			logrus.Errorf("ServeAPI error: %v", err)
 			serveAPIWait <- err

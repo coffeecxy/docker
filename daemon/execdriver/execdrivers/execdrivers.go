@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/pkg/sysinfo"
 )
 
+// 创建一个execdriver
 func NewDriver(name, root, libPath, initPath string, sysInfo *sysinfo.SysInfo) (execdriver.Driver, error) {
 	switch name {
 	case "lxc":

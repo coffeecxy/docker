@@ -88,8 +88,9 @@ func (c *contStore) List() []*Container {
 	return *containers
 }
 
+// 表示一个docker daemon
 type Daemon struct {
-	ID               string
+	ID               string // 这个daemon的id
 	repository       string
 	sysInitPath      string
 	containers       *contStore
@@ -99,7 +100,7 @@ type Daemon struct {
 	idIndex          *truncindex.TruncIndex
 	sysInfo          *sysinfo.SysInfo
 	volumes          *volumes.Repository
-	eng              *engine.Engine
+	eng              *engine.Engine // 执行job的引擎
 	config           *Config
 	containerGraph   *graphdb.Database
 	driver           graphdriver.Driver
@@ -323,6 +324,7 @@ func (daemon *Daemon) ensureName(container *Container) error {
 	return nil
 }
 
+// restore函数让daemon回到初始的状态
 func (daemon *Daemon) restore() error {
 	var (
 		debug         = (os.Getenv("DEBUG") != "" || os.Getenv("TEST") != "")
@@ -798,6 +800,7 @@ func (daemon *Daemon) RegisterLinks(container *Container, hostConfig *runconfig.
 
 // FIXME: harmonize with NewGraph()
 // 创建一个新的 docker daemon, config为其配置信息, eng为daemon中包含的用于包含Job的Engine
+// config中的内容是解析命令行得到的
 func NewDaemon(config *Config, eng *engine.Engine) (*Daemon, error) {
 	daemon, err := NewDaemonFromDirectory(config, eng)
 	if err != nil {
@@ -823,7 +826,9 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 	if !config.EnableIptables && config.EnableIpMasq {
 		config.EnableIpMasq = false
 	}
+
 	// 默认配置为false,也就是要启用容器中的网络
+	// 如果命令行的-b是none,表示docker daemon不会开启网络环境
 	config.DisableNetwork = config.BridgeIface == disableNetworkBridge
 
 	// Claim the pidfile first, to avoid any and all unexpected race conditions.
@@ -965,10 +970,11 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 		return nil, fmt.Errorf("could not create trust store: %s", err)
 	}
 
-	// 设置网络环境
-	if !config.DisableNetwork { //默认是开启了容器的网络环境的
+	// 设置docker daemon的网络环境
+	if !config.DisableNetwork { // 默认是开启了容器的网络环境的
 		job := eng.Job("init_networkdriver")
 
+		// 这些参数都是从命令行设置的
 		job.SetenvBool("EnableIptables", config.EnableIptables)                           //true
 		job.SetenvBool("InterContainerCommunication", config.InterContainerCommunication) //true
 		job.SetenvBool("EnableIpForward", config.EnableIpForward)                         //true
@@ -980,12 +986,13 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 		job.Setenv("FixedCIDRv6", config.FixedCIDRv6)                                     // ""
 		job.Setenv("DefaultBindingIP", config.DefaultIp.String())                         // 0.0.0.0
 
-		// 运行的函数是bridge.InitDriver
+		// 运行的函数是networkdriver.bridge.InitDriver
 		if err := job.Run(); err != nil {
 			return nil, err
 		}
 	}
 
+	// 创建graphdb并初始化,使用了sqlite3作为存储的方法
 	graphdbPath := path.Join(config.Root, "linkgraph.db")
 	graph, err := graphdb.NewSqliteConn(graphdbPath)
 	if err != nil {
@@ -998,7 +1005,9 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 		}
 	})
 
+	// /var/lib/docker/init/dockerinit-1.5.0
 	localCopy := path.Join(config.Root, "init", fmt.Sprintf("dockerinit-%s", dockerversion.VERSION))
+	// 找到这个dockerinit所在的位置
 	sysInitPath := utils.DockerInitPath(localCopy)
 	if sysInitPath == "" {
 		return nil, fmt.Errorf("Could not locate dockerinit: This usually means docker was built incorrectly. See http://docs.docker.com/contributing/devenvironment for official build instructions.")
@@ -1009,6 +1018,7 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 		if err := os.Mkdir(path.Dir(localCopy), 0700); err != nil && !os.IsExist(err) {
 			return nil, err
 		}
+		// 将init文件复制到我们指定的路径中
 		if _, err := utils.CopyFile(sysInitPath, localCopy); err != nil {
 			return nil, err
 		}
@@ -1018,13 +1028,18 @@ func NewDaemonFromDirectory(config *Config, eng *engine.Engine) (*Daemon, error)
 		sysInitPath = localCopy
 	}
 
+	// 创建execdriver
 	sysInfo := sysinfo.New(false)
 	const runDir = "/var/run/docker"
+	// ExecDriver的默认值为native,也可以使用lxc
+	// config.Root为/var/lib/docker
+	// sysInitPath为dockerinit存放的路径,在上面给出了
 	ed, err := execdrivers.NewDriver(config.ExecDriver, runDir, config.Root, sysInitPath, sysInfo)
 	if err != nil {
 		return nil, err
 	}
 
+	// 在准备好需要的信息之后,创建出一个Daemon
 	daemon := &Daemon{
 		ID:               trustKey.PublicKey().KeyID(),
 		repository:       daemonRepo,

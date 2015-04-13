@@ -8,6 +8,8 @@ import (
 	"github.com/docker/docker/engine"
 )
 
+// 在windows中,没有unix和fd这两个协议,只能使用tcp
+
 // NewServer sets up the required Server and does protocol specific checking.
 func NewServer(proto, addr string, job *engine.Job) (Server, error) {
 	// Basic error and sanity checking

@@ -119,7 +119,7 @@ func (eng *Engine) commands() []string {
 
 // Job creates a new job which can later be executed.
 // This function mimics `Command` from the standard os/exec package.
-// 在这个engine中新建一个Job,然后可以使用Run来运行
+// 在这个engine中新建一个Job,然后可以使用Run来运行,args为这个job对应的handler运行时需要的参数
 func (eng *Engine) Job(name string, args ...string) *Job {
 	job := &Job{
 		Eng:     eng,  // Eng为当前的engine
